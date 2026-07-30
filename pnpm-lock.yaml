@@ -108,8 +108,8 @@ importers:
         specifier: ^173.0.0
         version: 173.0.0(supports-color@7.2.0)
       groq-sdk:
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.4.1
+        version: 1.4.1
       lucide-react:
         specifier: ^1.27.0
         version: 1.27.0(react@19.2.4)
@@ -3518,8 +3518,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  groq-sdk@1.4.0:
-    resolution: {integrity: sha512-4EAmBWlt5SNVyhKWqVPns9marmWYbtYO4kkE0u34NW3+GlVQ5d/JJ0sJRg/rOsqmVispCD3bK/EykH3zC1AeUQ==}
+  groq-sdk@1.4.1:
+    resolution: {integrity: sha512-M/SmQdHy+nI4ZWyDgXK57p+jQHi9ojjzJVv3mlkDAL/vvxduUYoyAzib70dNvxsWmwsyZTSERMrXgaXR3B3KUA==}
     hasBin: true
 
   gtoken@8.0.0:
@@ -8484,7 +8484,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  groq-sdk@1.4.0: {}
+  groq-sdk@1.4.1: {}
 
   gtoken@8.0.0(supports-color@7.2.0):
     dependencies:
