@@ -1,0 +1,28 @@
+name: Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Hetzner VPS
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH Deployment Trigger
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/qrm-dashboard
+            git pull origin main
+            bash scripts/deploy.sh
+      - name: Verify Post-Deploy Health Check
+        run: |
+          sleep 15
+          curl -sf https://${{ secrets.DOMAIN }}/api/health || exit 1

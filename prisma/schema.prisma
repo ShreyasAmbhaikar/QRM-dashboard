@@ -1,0 +1,428 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  SEO_SPECIALIST
+  CONTENT_WRITER
+  VIEWER
+}
+
+enum ClientStatus {
+  ACTIVE
+  ONBOARDING
+  PAUSED
+  CHURNED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  AUDIT_SENT
+  PROPOSAL
+  WON
+  LOST
+}
+
+enum AgreementStatus {
+  DRAFT
+  SENT
+  SIGNED
+  EXPIRED
+  CANCELLED
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model User {
+  id                String            @id @default(cuid())
+  name              String
+  email             String            @unique
+  emailVerified     DateTime?
+  password          String?
+  image             String?
+  role              Role              @default(VIEWER)
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  assignedClients   Client[]          @relation("ClientManager")
+  assignedTasks     Task[]            @relation("TaskAssignee")
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  permission        UserPermission?
+  preferences       NotificationPreference?
+  createdLeads      Lead[]            @relation("LeadCreator")
+  createdAgreements Agreement[]       @relation("AgreementCreator")
+  createdPosts      Post[]            @relation("PostCreator")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model UserPermission {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  role              Role     @default(VIEWER)
+  customPermissions Json     @default("{}")
+  isCustomized      Boolean  @default(false)
+  updatedBy         String?
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model NotificationPreference {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  inApp       Boolean  @default(true)
+  email       Boolean  @default(true)
+  dailyDigest Boolean  @default(false)
+  digestTime  String   @default("09:00")
+  categories  Json     @default("{}")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Client {
+  id                String            @id @default(cuid())
+  name              String
+  domain            String            @unique
+  industry          String?
+  status            ClientStatus      @default(ACTIVE)
+  healthScore       Int               @default(100)
+  logoUrl           String?
+  primaryColor      String            @default("#3b82f6")
+  managerId         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  manager           User?             @relation("ClientManager", fields: [managerId], references: [id])
+  gbpIntegration    GbpIntegration?
+  keywords          Keyword[]
+  competitors       Competitor[]
+  posts             Post[]
+  gbpReviews        GbpReview[]
+  audits            SeoAudit[]
+  agreements        Agreement[]
+  backlinks         Backlink[]
+  citations         CitationListing[]
+  tasks             Task[]
+  rankingGrids      RankingGrid[]
+  servicePages      ServicePage[]
+  performanceLogs   PerformanceLog[]
+}
+
+model GbpIntegration {
+  id                String   @id @default(cuid())
+  clientId          String   @unique
+  locationId        String
+  accessToken       String   // Encrypted AES-256
+  refreshToken      String   // Encrypted AES-256
+  expiryDate        DateTime
+  profileScore      Int      @default(0)
+  lastSyncedAt      DateTime @default(now())
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Keyword {
+  id                String               @id @default(cuid())
+  clientId          String
+  term              String
+  searchVolume      Int                  @default(0)
+  cpc               Float                @default(0.0)
+  difficulty        Int                  @default(0)
+  intent            String               @default("Informational")
+  currentRank       Int?
+  previousRank      Int?
+  targetUrl         String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  client            Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  rankHistory       KeywordRankHistory[]
+
+  @@unique([clientId, term])
+  @@index([clientId, currentRank])
+}
+
+model KeywordRankHistory {
+  id         String   @id @default(cuid())
+  keywordId  String
+  rank       Int
+  url        String?
+  checkedAt  DateTime @default(now())
+  keyword    Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([keywordId, checkedAt])
+}
+
+model Competitor {
+  id                String   @id @default(cuid())
+  clientId          String
+  domain            String
+  domainAuthority   Int      @default(0)
+  estimatedTraffic  Int      @default(0)
+  createdAt         DateTime @default(now())
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, domain])
+}
+
+model Post {
+  id                String     @id @default(cuid())
+  clientId          String
+  createdById       String?
+  title             String
+  summary           String     @db.Text
+  ctaType           String     @default("LEARN_MORE")
+  ctaUrl            String?
+  imageUrl          String?
+  graphicMode       String     @default("HYBRID_CANVAS")
+  status            PostStatus @default(DRAFT)
+  scheduledFor      DateTime?
+  publishedAt       DateTime?
+  gbpPostId         String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  client            Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy         User?      @relation("PostCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, status, scheduledFor])
+}
+
+model GbpReview {
+  id              String    @id @default(cuid())
+  clientId        String
+  gbpReviewId     String    @unique
+  reviewerName    String
+  rating          Int
+  comment         String?   @db.Text
+  replyText       String?   @db.Text
+  replyStatus     String    @default("PENDING") // PENDING, DRAFTED, PUBLISHED
+  publishedAt     DateTime?
+  fetchedAt       DateTime  @default(now())
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, replyStatus])
+}
+
+model RankingGrid {
+  id                String   @id @default(cuid())
+  clientId          String
+  keyword           String
+  gridSize          Int      @default(5)
+  radiusMiles       Float    @default(2.0)
+  centerLat         Float
+  centerLng         Float
+  gridPoints        Json
+  avgRank           Float
+  createdAt         DateTime @default(now())
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, keyword, createdAt])
+}
+
+model SeoAudit {
+  id                String   @id @default(cuid())
+  clientId          String
+  healthScore       Int      @default(0)
+  pagesCrawled      Int      @default(0)
+  issuesFound       Json
+  coreWebVitals     Json
+  reportPdfUrl      String?
+  createdAt         DateTime @default(now())
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
+}
+
+model ServicePage {
+  id                String   @id @default(cuid())
+  clientId          String
+  serviceName       String
+  targetCity        String
+  primaryKeyword    String
+  htmlContent       String   @db.Text
+  jsonLdSchema      String   @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Lead {
+  id                String     @id @default(cuid())
+  createdById       String?
+  companyName       String
+  contactName       String
+  email             String
+  phone             String?
+  website           String
+  status            LeadStatus @default(NEW)
+  score             Int        @default(50)
+  estimatedBudget   Float?
+  notes             String?    @db.Text
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  createdBy         User?      @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status, score])
+}
+
+model Agreement {
+  id                String          @id @default(cuid())
+  clientId          String
+  createdById       String?
+  title             String
+  monthlyFee        Float
+  startDate         DateTime
+  endDate           DateTime?
+  status            AgreementStatus @default(DRAFT)
+  deliverables      Json
+  pdfUrl            String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  client            Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy         User?           @relation("AgreementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model Backlink {
+  id                String   @id @default(cuid())
+  clientId          String
+  referringDomain   String
+  targetUrl         String
+  anchorText        String?
+  domainAuthority   Int      @default(0)
+  isToxic           Boolean  @default(false)
+  firstSeen         DateTime @default(now())
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, referringDomain, targetUrl])
+}
+
+model CitationListing {
+  id              String    @id @default(cuid())
+  clientId        String
+  directoryName   String
+  listingUrl      String?
+  nameMatch       Boolean   @default(false)
+  addressMatch    Boolean   @default(false)
+  phoneMatch      Boolean   @default(false)
+  status          String    @default("NOT_CHECKED") // NOT_CHECKED, CONSISTENT, INCONSISTENT, NOT_FOUND
+  lastCheckedAt   DateTime?
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, directoryName])
+}
+
+model Task {
+  id                String    @id @default(cuid())
+  title             String
+  description       String?   @db.Text
+  status            String    @default("TODO")
+  priority          String    @default("MEDIUM")
+  dueDate           DateTime?
+  clientId          String?
+  assigneeId        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  assignee          User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, status, dueDate])
+}
+
+model PerformanceLog {
+  id                String   @id @default(cuid())
+  clientId          String
+  lcpScore          Float
+  inpScore          Float
+  clsScore          Float
+  performanceGrade  Int
+  createdAt         DateTime @default(now())
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  title       String
+  message     String
+  metadata    Json?
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  actionUrl   String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model AuditLog {
+  id                String   @id @default(cuid())
+  userId            String
+  action            String
+  resource          String
+  resourceId        String?
+  previousData      Json?
+  newData           Json?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, action, resource, createdAt])
+}
