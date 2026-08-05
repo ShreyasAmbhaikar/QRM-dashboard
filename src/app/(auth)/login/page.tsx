@@ -17,7 +17,14 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { success, error: toastError } = useToast();
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const rawCallback = searchParams.get('callbackUrl');
+  let callbackUrl = '/dashboard';
+  if (rawCallback) {
+    const decoded = decodeURIComponent(rawCallback);
+    if (decoded && decoded !== '/' && decoded !== '%2F' && !decoded.includes('%2F') && decoded.startsWith('/')) {
+      callbackUrl = decoded;
+    }
+  }
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

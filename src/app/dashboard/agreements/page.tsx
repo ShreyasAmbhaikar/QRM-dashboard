@@ -1,77 +1,149 @@
-import React from 'react';
-import { getAgreements, updateAgreementStatus } from '@/features/agreements/actions';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { FileText, Plus, ArrowUpRight, DollarSign, Calendar } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
-import Link from 'next/link';
+import { db } from '@/lib/db';
+import { auth } from '@/lib/auth';
+import { redirect } from 'next/navigation';
+import { getAgreements } from '@/features/agreements/actions';
 
 export default async function AgreementsPage() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    redirect('/login');
+  }
+
+  // Get agreements
   const response = await getAgreements();
   const agreements = response.success ? response.data : [];
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Service Agreements</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage agency SEO contracts, monthly retainers, deliverables, and PDF generation.
-          </p>
-        </div>
-        <Button className="gap-2 shadow-lg">
-          <Plus className="h-4 w-4" /> Create New Contract
-        </Button>
-      </div>
+  const firstAgreement = agreements[0];
+  if (firstAgreement) {
+    // Redirect to the first (most recently created/updated) agreement
+    redirect(`/dashboard/agreements/${firstAgreement.id}`);
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {agreements.map((item) => (
-          <Card key={item.id} className="border-border hover:border-primary/50 transition-all group">
-            <CardHeader className="pb-3 flex flex-row items-start justify-between">
-              <div className="space-y-1">
-                <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
-                  {item.client.name}
-                </Badge>
-                <CardTitle className="text-base group-hover:text-primary transition-colors">
-                  {item.title}
-                </CardTitle>
-              </div>
-              <Badge variant={item.status === 'SIGNED' ? 'success' : 'outline'}>
-                {item.status}
-              </Badge>
-            </CardHeader>
+  // If no agreements exist, find or create a default client
+  let client = await db.client.findFirst();
+  if (!client) {
+    client = await db.client.create({
+      data: {
+        name: 'Dr. Chintan Gujarathi',
+        domain: 'drchintangujarathi.com',
+        industry: 'Medical/Cosmetic',
+        status: 'ACTIVE',
+      },
+    });
+  }
 
-            <CardContent className="space-y-4 text-xs">
-              <div className="flex items-center justify-between py-2 border-y border-border">
-                <span className="text-muted-foreground">Retainer Fee</span>
-                <span className="font-bold text-emerald-400 flex items-center">
-                  <DollarSign className="h-3.5 w-3.5" />
-                  {item.monthlyFee.toLocaleString()}/mo
-                </span>
-              </div>
+  // Create default template agreement
+  const DEFAULT_AGREEMENT_TEMPLATE = `<p>This Agreement is made on <strong>____________________</strong> between:</p>
+<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 16px;">
+  <tr>
+    <td style="width: 50%; border: 1px solid #cbd5e1; padding: 8px; vertical-align: top;">
+      <strong>Service Provider:</strong> Quantum Reach Media<br />
+      <strong>Address:</strong> _________________________________
+    </td>
+    <td style="width: 50%; border: 1px solid #cbd5e1; padding: 8px; vertical-align: top;">
+      <strong>Client:</strong> Dr. Chintan Gujarathi<br />
+      <strong>Business Name:</strong> Dr. Chintan Gujarathi – Plastic & Cosmetic Surgery Clinic<br />
+      <strong>Address:</strong> _________________________________
+    </td>
+  </tr>
+</table>
 
-              <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>Effective: {formatDate(item.startDate)}</span>
-              </div>
+<h1>PURPOSE OF AGREEMENT</h1>
+<p>The purpose of this agreement is to provide Google My Business (GMB) Optimization and Website Development services for the promotion and digital growth of Dr. Chintan Gujarathi’s clinic.</p>
 
-              <Link href={`/dashboard/agreements/${item.id}`} className="block">
-                <Button variant="outline" size="sm" className="w-full gap-1 text-xs">
-                  View Contract & PDF <ArrowUpRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
+<h1>SCOPE OF SERVICES</h1>
+<p>The Service Provider agrees to provide the following services:</p>
+<h2>A. Google My Business (GMB) Optimization</h2>
+<ul>
+  <li>Optimization of Google My Business Profile</li>
+  <li>Area-wise listing and targeting</li>
+  <li>Category keyword listing optimization</li>
+  <li>High-intent keyword targeting based on location and pin code (Example: Plastic Surgeon in 411001)</li>
+  <li>Relevant address targeting for improved local visibility</li>
+  <li>Improvement in local search visibility and Google rankings</li>
+  <li>Patient traffic and footfall growth strategies for relevant categories such as Plastic Surgeon and Cosmetic Surgeon</li>
+  <li>Continuous maintenance and optimization for a duration of 12 months</li>
+</ul>
+<h2>B. Website Development</h2>
+<ul>
+  <li>SEO-friendly website development</li>
+  <li>Mobile responsive and user-friendly design</li>
+  <li>Service pages optimization</li>
+  <li>Basic on-page SEO implementation</li>
+  <li>Contact and appointment inquiry integration</li>
+  <li>Performance and visibility optimization</li>
+</ul>
 
-        {agreements.length === 0 && (
-          <div className="col-span-full p-12 text-center border border-dashed border-border rounded-xl">
-            <FileText className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No service agreements found. Click "Create New Contract" to get started.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+<h1>PERFORMANCE OBJECTIVES</h1>
+<p>The Service Provider will work towards:</p>
+<ul>
+  <li>Achieving first-page visibility on Google for targeted keywords</li>
+  <li>Improving online presence and local search rankings</li>
+  <li>Generating higher patient inquiries and clinic visibility</li>
+  <li>Delivering an estimated 3 to 4 times return on investment through digital growth strategies</li>
+</ul>
+
+<h1>DURATION</h1>
+<p>This agreement shall remain valid for a period of One (1) Year from the date of commencement.</p>
+
+<hr />
+
+<h1>SERVICE FEES</h1>
+<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 12px; background-color: #faf5ff;">
+  <tr>
+    <td style="padding: 10px; border: 1px solid #cbd5e1;">
+      <strong>Total Service Amount:</strong> INR 96,000/- (Ninety-Six Thousand Rupees Only)
+    </td>
+  </tr>
+</table>
+<p><strong>Services Included:</strong></p>
+<ul>
+  <li>Google My Business (GMB) Optimization</li>
+  <li>Website Development</li>
+  <li>Maintenance for One Year</li>
+</ul>
+
+<h1>PAYMENT TERMS</h1>
+<ul>
+  <li>Payment terms shall be mutually agreed upon by both parties.</li>
+  <li>Any additional services outside the agreed scope may be charged separately.</li>
+</ul>
+
+<h1>CLIENT RESPONSIBILITIES</h1>
+<p>The Client agrees to provide:</p>
+<ul>
+  <li>Required clinic information, images, branding materials, and approvals on time</li>
+  <li>Timely communication and cooperation for successful project execution</li>
+</ul>
+
+<h1>LIMITATION OF GUARANTEE</h1>
+<p>While the Service Provider will implement professional SEO and marketing practices, Google rankings and business growth may vary based on competition, market conditions, and algorithm updates. No absolute ranking guarantee is implied.</p>
+
+<h1>TERMINATION</h1>
+<p>Either party may terminate this agreement with prior written notice if terms are violated or services cannot continue due to unforeseen circumstances.</p>
+
+<h1>ACCEPTANCE</h1>
+<p>By signing below, both parties agree to the terms and conditions mentioned in this agreement.</p>`;
+
+  const newAgreement = await db.agreement.create({
+    data: {
+      title: 'Dr. Chintan Gujarathi — Plastic & Cosmetic Surgery Clinic Service Agreement',
+      clientId: client.id,
+      monthlyFee: 8000,
+      startDate: new Date(),
+      content: DEFAULT_AGREEMENT_TEMPLATE,
+      companyName: 'Quantum Reach Media',
+      companyEmail: 'tushar7738812028@gmail.com',
+      companyPhone: '+91 77388 12028',
+      companyWebsite: 'quantumreachmedia.com',
+      deliverables: [
+        'Google My Business (GMB) Optimization',
+        'SEO-Friendly Website Development',
+        '12 Months Continuous GMB Maintenance',
+      ],
+      createdById: session.user.id,
+    },
+  });
+
+  redirect(`/dashboard/agreements/${newAgreement.id}`);
 }

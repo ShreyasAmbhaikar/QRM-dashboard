@@ -6,29 +6,58 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { User, Mail, Building2, Palette, Save, CheckCircle2 } from 'lucide-react';
+import { updateUserProfile } from '@/features/settings/actions';
 
 interface AgencyProfileFormProps {
   initialUser: {
     name: string;
     email: string;
+    image?: string;
   };
 }
 
 export function AgencyProfileForm({ initialUser }: AgencyProfileFormProps) {
-  const { success } = useToast();
+  const { success, error: toastError } = useToast();
   const [name, setName] = useState(initialUser.name);
   const [email, setEmail] = useState(initialUser.email);
+  const [image, setImage] = useState(initialUser.image || '');
+  const [imagePreview, setImagePreview] = useState(initialUser.image || '');
   const [agencyName, setAgencyName] = useState('Quantum Reach Media');
   const [primaryColor, setPrimaryColor] = useState('#3b82f6');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toastError('File Too Large', 'Please upload an image smaller than 2MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setImage(base64);
+        setImagePreview(base64);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      const res = await updateUserProfile({ name, email, image });
+      if (res.success) {
+        success('Agency Profile Updated', 'Profile credentials saved successfully.');
+      } else {
+        toastError('Update Failed', res.error.message || 'Failed to update profile settings.');
+      }
+    } catch (err: any) {
+      toastError('Error', err.message || 'An unexpected error occurred.');
+    } finally {
       setIsSaving(false);
-      success('Agency Profile Updated', 'Branding details and profile credentials saved successfully.');
-    }, 600);
+    }
   };
 
   return (
@@ -43,15 +72,34 @@ export function AgencyProfileForm({ initialUser }: AgencyProfileFormProps) {
           {/* Avatar Preview Row */}
           <div className="flex items-center gap-4 p-3.5 rounded-xl border border-border/60 bg-muted/20">
             <div
-              className="h-12 w-12 rounded-xl flex items-center justify-center font-bold text-white shadow-md text-base border border-white/20"
+              className="relative group cursor-pointer h-12 w-12 rounded-xl flex items-center justify-center font-bold text-white shadow-md text-base border border-white/20 overflow-hidden"
               style={{ backgroundColor: primaryColor }}
+              onClick={() => document.getElementById('avatar-upload')?.click()}
             >
-              {name ? name.substring(0, 2).toUpperCase() : 'QA'}
+              {imagePreview ? (
+                <img
+                  src={imagePreview}
+                  alt="Avatar Preview"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                name ? name.substring(0, 2).toUpperCase() : 'QA'
+              )}
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-[8px] font-bold text-white uppercase text-center leading-none">Upload</span>
+              </div>
             </div>
             <div>
               <h4 className="font-bold text-sm text-foreground">{name || 'Admin User'}</h4>
               <p className="text-xs text-muted-foreground">{email || 'admin@quantumreachmedia.com'}</p>
             </div>
+            <input
+              type="file"
+              id="avatar-upload"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

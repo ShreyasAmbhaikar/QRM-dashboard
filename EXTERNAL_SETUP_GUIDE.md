@@ -167,7 +167,16 @@ Required to list local businesses, sync reviews, generate map rank grids, and au
 4. Restrict this key to HTTP referrers in production.
 5. Set in `.env.local`:
    ```env
-   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="your-maps-api-key"
+   NEXT_PUBLIC_GOOGLE_MAPS_KEY="your-maps-api-key"
+   ```
+
+### C. Mapbox Access Token (Alternative Geocoding)
+1. Sign up for a free account at [Mapbox](https://www.mapbox.com/).
+2. Navigate to your Mapbox Account Dashboard.
+3. Under **Access tokens**, copy your **Default public token** (or create a new one).
+4. Set in `.env.local`:
+   ```env
+   MAPBOX_ACCESS_TOKEN="pk.eyJ1..."
    ```
 
 ---

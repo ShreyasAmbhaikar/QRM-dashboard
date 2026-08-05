@@ -6,56 +6,245 @@ import { withPermission } from '@/lib/auth/permissions';
 import { createAuditLog } from '@/lib/audit';
 import { successResponse, errorResponse, ApiResponse } from '@/lib/api/response';
 import { generateGridSchema, GenerateGridInput } from './schemas';
-import { generateGridPoints, GridPoint } from './grid-calculator';
+import { gridScanQueue } from '@/lib/queue';
+import { runLocalGridScan } from './scan-processor';
 import { RankingGrid } from '@prisma/client';
 
-export async function generateLocalRankingGrid(input: GenerateGridInput): Promise<ApiResponse<{ grid: RankingGrid; points: GridPoint[] }>> {
-  const session = await auth();
-  if (!session?.user?.id) return errorResponse('UNAUTHORIZED', 'Auth required');
+// Dynamic import to auto-boot background workers during Next.js local development
+if (process.env.NODE_ENV === 'development') {
+  import('@/workers/grid-scan.worker')
+    .then(() => {
+      console.log('⚡ QRM local grid scan background worker booted successfully.');
+    })
+    .catch((err) => {
+      console.error('❌ Failed to boot local grid scan background worker:', err);
+    });
+}
 
-  const hasPermission = await withPermission('localGrid', 'read')(session.user.id);
-  if (!hasPermission) return errorResponse('FORBIDDEN', 'Permission denied');
+// 1. Enqueue or Direct Run Local Geo-Grid Scan
+export async function enqueueLocalGridScan(
+  input: GenerateGridInput
+): Promise<ApiResponse<{ jobId?: string; gridIds?: string[] }>> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return errorResponse('UNAUTHORIZED', 'Authentication required');
+  }
+
+  const hasPermission = await withPermission('localGrid', 'full')(session.user.id);
+  if (!hasPermission) {
+    return errorResponse('FORBIDDEN', 'Full permissions required to run ranking scans');
+  }
 
   const parseResult = generateGridSchema.safeParse(input);
-  if (!parseResult.success) return errorResponse('VALIDATION_ERROR', 'Invalid grid input', parseResult.error.format());
+  if (!parseResult.success) {
+    return errorResponse('VALIDATION_ERROR', 'Invalid grid input', parseResult.error.format());
+  }
 
-  const { clientId, keyword, centerLat, centerLng, gridSize, radiusMiles } = parseResult.data;
+  const data = parseResult.data;
 
   try {
-    const rawPoints = generateGridPoints({ lat: centerLat, lng: centerLng }, gridSize as 3 | 5 | 7, radiusMiles);
+    // A. Direct Synchronous Mode: If playwright is disabled, run the simulator synchronously (takes <1s)
+    if (process.env.ENABLE_PLAYWRIGHT_SCRAPING !== 'true') {
+      const gridIds = await runLocalGridScan({
+        clientId: data.clientId,
+        keywords: data.keywords,
+        address: data.address,
+        centerLat: data.centerLat,
+        centerLng: data.centerLng,
+        gridSize: data.gridSize,
+        radiusMiles: data.radiusMiles,
+        geocoder: data.geocoder,
+        isCustomSearch: data.isCustomSearch,
+        targetPlaceId: data.targetPlaceId,
+        targetName: data.targetName,
+        targetDomain: data.targetDomain,
+      });
 
-    const pointsWithRanks: GridPoint[] = rawPoints.map((pt) => {
-      const distFromCenter = Math.sqrt(Math.pow(pt.row - Math.floor(gridSize / 2), 2) + Math.pow(pt.col - Math.floor(gridSize / 2), 2));
-      const simulatedRank = Math.min(20, Math.max(1, Math.round(distFromCenter * 2.5 + 1 + Math.random() * 2)));
-      return { ...pt, rank: simulatedRank };
+      await createAuditLog({
+        userId: session.user.id,
+        action: 'CREATE',
+        resource: 'RankingGrid',
+        newData: { 
+          keywordsCount: data.keywords.length, 
+          gridSize: data.gridSize, 
+          radiusMiles: data.radiusMiles, 
+          geocoder: data.geocoder,
+          mode: 'synchronous'
+        },
+      });
+
+      return successResponse({ gridIds });
+    }
+
+    // B. Queue Mode: Try scheduling background job in BullMQ
+    try {
+      const job = await gridScanQueue.add(
+        'run-grid-scan',
+        {
+          clientId: data.clientId,
+          keywords: data.keywords,
+          address: data.address,
+          centerLat: data.centerLat,
+          centerLng: data.centerLng,
+          gridSize: data.gridSize,
+          radiusMiles: data.radiusMiles,
+          geocoder: data.geocoder,
+          isCustomSearch: data.isCustomSearch,
+          targetPlaceId: data.targetPlaceId,
+          targetName: data.targetName,
+          targetDomain: data.targetDomain,
+        },
+        {
+          removeOnComplete: true,
+          removeOnFail: false,
+        }
+      );
+
+      await createAuditLog({
+        userId: session.user.id,
+        action: 'CREATE',
+        resource: 'RankingGrid',
+        newData: { 
+          keywordsCount: data.keywords.length, 
+          gridSize: data.gridSize, 
+          radiusMiles: data.radiusMiles, 
+          geocoder: data.geocoder,
+          mode: 'queued'
+        },
+      });
+
+      return successResponse({ jobId: job.id! });
+    } catch (queueErr) {
+      console.warn('Queue submission failed (Redis offline). Falling back to synchronous scan execution:', queueErr);
+      
+      // Secondary Fallback: Execute synchronously if Redis is offline
+      const gridIds = await runLocalGridScan({
+        clientId: data.clientId,
+        keywords: data.keywords,
+        address: data.address,
+        centerLat: data.centerLat,
+        centerLng: data.centerLng,
+        gridSize: data.gridSize,
+        radiusMiles: data.radiusMiles,
+        geocoder: data.geocoder,
+        isCustomSearch: data.isCustomSearch,
+        targetPlaceId: data.targetPlaceId,
+        targetName: data.targetName,
+        targetDomain: data.targetDomain,
+      });
+
+      return successResponse({ gridIds });
+    }
+  } catch (err: unknown) {
+    console.error('Failed to execute local grid scan:', err);
+    return errorResponse('DATABASE_ERROR', 'Failed to execute local rank scan', err);
+  }
+}
+
+// 2. Check Job Status in Queue
+export async function getGridScanStatus(
+  jobId: string
+): Promise<ApiResponse<{ 
+  status: 'active' | 'waiting' | 'completed' | 'failed' | 'unknown'; 
+  progress: number; 
+  result?: { success: boolean; gridIds: string[] }; 
+  error?: string;
+}>> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return errorResponse('UNAUTHORIZED', 'Authentication required');
+  }
+
+  try {
+    const job = await gridScanQueue.getJob(jobId);
+    if (!job) {
+      return successResponse({ status: 'unknown', progress: 0 });
+    }
+
+    const state = await job.getState();
+    const progress = job.progress;
+    const result = job.returnvalue;
+    const failedReason = job.failedReason;
+
+    return successResponse({
+      status: state as any,
+      progress: typeof progress === 'number' ? progress : 0,
+      result: state === 'completed' ? result : undefined,
+      error: state === 'failed' ? failedReason : undefined,
     });
+  } catch (err: unknown) {
+    return errorResponse('DATABASE_ERROR', 'Failed to retrieve scan job status', err);
+  }
+}
 
-    const sumRanks = pointsWithRanks.reduce((acc, p) => acc + (p.rank || 20), 0);
-    const avgRank = Number((sumRanks / pointsWithRanks.length).toFixed(1));
+// 3. Fetch Completed Grids in Bulk
+export async function getCompletedGrids(
+  gridIds: string[]
+): Promise<ApiResponse<RankingGrid[]>> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return errorResponse('UNAUTHORIZED', 'Authentication required');
+  }
 
-    const grid = await db.rankingGrid.create({
-      data: {
-        clientId,
-        keyword,
-        centerLat,
-        centerLng,
-        gridSize,
-        radiusMiles,
-        gridPoints: JSON.stringify(pointsWithRanks),
-        avgRank,
-      },
+  try {
+    const records = await db.rankingGrid.findMany({
+      where: { id: { in: gridIds } },
+      orderBy: { keyword: 'asc' },
+    });
+    return successResponse(records);
+  } catch (err: unknown) {
+    return errorResponse('DATABASE_ERROR', 'Failed to fetch completed ranking grids', err);
+  }
+}
+
+// 4. Retrieve Scan History for Client
+export async function getGridScanHistory(
+  clientId: string
+): Promise<ApiResponse<RankingGrid[]>> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return errorResponse('UNAUTHORIZED', 'Authentication required');
+  }
+
+  try {
+    const history = await db.rankingGrid.findMany({
+      where: { clientId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return successResponse(history);
+  } catch (err: unknown) {
+    return errorResponse('DATABASE_ERROR', 'Failed to fetch ranking grid history', err);
+  }
+}
+
+// 5. Delete Grid Snapshot
+export async function deleteGridScan(
+  gridId: string
+): Promise<ApiResponse<{ success: boolean }>> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return errorResponse('UNAUTHORIZED', 'Authentication required');
+  }
+
+  const hasPermission = await withPermission('localGrid', 'full')(session.user.id);
+  if (!hasPermission) {
+    return errorResponse('FORBIDDEN', 'Full permissions required to delete history');
+  }
+
+  try {
+    await db.rankingGrid.delete({
+      where: { id: gridId },
     });
 
     await createAuditLog({
       userId: session.user.id,
-      action: 'CREATE',
+      action: 'DELETE',
       resource: 'RankingGrid',
-      resourceId: grid.id,
-      newData: { keyword, gridSize, radiusMiles },
+      resourceId: gridId,
     });
 
-    return successResponse({ grid, points: pointsWithRanks });
+    return successResponse({ success: true });
   } catch (err: unknown) {
-    return errorResponse('DATABASE_ERROR', 'Failed to generate local grid', err);
+    return errorResponse('DATABASE_ERROR', 'Failed to delete ranking grid snapshot', err);
   }
 }

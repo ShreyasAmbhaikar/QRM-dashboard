@@ -6,10 +6,20 @@ export const createAgreementSchema = z.object({
   clientId: z.string().min(1, 'Client is required'),
   monthlyFee: z.number().positive('Monthly fee must be positive'),
   startDate: z.string().or(z.date()),
-  endDate: z.string().or(z.date()).optional(),
+  endDate: z.string().or(z.date()).optional().nullable(),
   deliverables: z.array(z.string()).default([]),
   content: z.string().min(10, 'Contract content is required'),
   status: z.nativeEnum(AgreementStatus).default(AgreementStatus.DRAFT),
+  companyName: z.string().optional(),
+  companyEmail: z.string().email('Invalid email address').optional().or(z.literal('')),
+  companyPhone: z.string().optional(),
+  companyWebsite: z.string().optional(),
+  clientSignature: z.string().optional().nullable(),
+  clientSignedName: z.string().optional().nullable(),
+  clientSignedAt: z.string().or(z.date()).optional().nullable(),
+  providerSignature: z.string().optional().nullable(),
+  providerSignedName: z.string().optional().nullable(),
+  providerSignedAt: z.string().or(z.date()).optional().nullable(),
 });
 
 export const updateAgreementSchema = createAgreementSchema.partial().extend({

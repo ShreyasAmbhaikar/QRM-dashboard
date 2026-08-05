@@ -14,7 +14,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { userId, clientId } = JSON.parse(stateParam);
+    const decodedState = Buffer.from(stateParam, 'base64').toString('utf-8');
+    const { userId, clientId } = JSON.parse(decodedState);
     const tokens = await exchangeCodeForTokens(code);
 
     if (!tokens.access_token) {
@@ -24,6 +25,27 @@ export async function GET(request: Request) {
     const encryptedAccessToken = encrypt(tokens.access_token);
     const encryptedRefreshToken = tokens.refresh_token ? encrypt(tokens.refresh_token) : encryptedAccessToken;
     const expiryDate = tokens.expiry_date ? new Date(tokens.expiry_date) : new Date(Date.now() + 3600 * 1000);
+
+    if (clientId === 'import') {
+      const pending = await db.pendingGoogleConnection.create({
+        data: {
+          userId,
+          accessToken: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
+          expiryDate,
+        },
+      });
+
+      await createAuditLog({
+        userId,
+        action: 'CREATE',
+        resource: 'PendingGoogleConnection',
+        resourceId: pending.id,
+        newData: { status: 'PENDING_SELECTION' },
+      });
+
+      return NextResponse.redirect(new URL(`/dashboard/gbp/import?connectionId=${pending.id}`, request.url));
+    }
 
     await db.gbpIntegration.upsert({
       where: { clientId },

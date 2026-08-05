@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const UpdateProfileSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
+  image: z.string().optional(),
 });
 
 export const UpdateRbacSchema = z.object({

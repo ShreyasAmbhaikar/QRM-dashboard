@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const clientId = searchParams.get('clientId') || 'default-client';
 
-  const state = JSON.stringify({ userId: session.user.id, clientId });
+  const state = Buffer.from(JSON.stringify({ userId: session.user.id, clientId })).toString('base64');
   const authUrl = getGoogleAuthUrl(state);
 
   return NextResponse.redirect(authUrl);

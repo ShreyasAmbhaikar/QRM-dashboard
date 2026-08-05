@@ -16,6 +16,7 @@ export default async function SettingsProfilePage() {
   const user = {
     name: session.user.name || 'Admin User',
     email: session.user.email || 'admin@quantumreachmedia.com',
+    image: session.user.image || '',
   };
 
   return (

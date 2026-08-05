@@ -254,17 +254,22 @@ model GbpReview {
 }
 
 model RankingGrid {
-  id                String   @id @default(cuid())
-  clientId          String
-  keyword           String
-  gridSize          Int      @default(5)
-  radiusMiles       Float    @default(2.0)
-  centerLat         Float
-  centerLng         Float
-  gridPoints        Json
-  avgRank           Float
-  createdAt         DateTime @default(now())
-  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id                  String   @id @default(cuid())
+  clientId            String
+  keyword             String
+  gridSize            Int      @default(5)
+  radiusMiles         Float    @default(2.0)
+  centerLat           Float
+  centerLng           Float
+  gridPoints          Json
+  avgRank             Float
+  visibilityScore     Float    @default(0.0)
+  relativeReviewScore Float    @default(0.0)
+  targetPlaceId       String?
+  targetName          String?
+  targetDomain        String?
+  createdAt           DateTime @default(now())
+  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId, keyword, createdAt])
 }
@@ -327,6 +332,17 @@ model Agreement {
   status            AgreementStatus @default(DRAFT)
   deliverables      Json
   pdfUrl            String?
+  content           String          @default("") @db.Text
+  clientSignature   String?         @db.Text
+  clientSignedName  String?
+  clientSignedAt    DateTime?
+  providerSignature String?         @db.Text
+  providerSignedName String?
+  providerSignedAt  DateTime?
+  companyName       String?         @default("Quantum Reach Media")
+  companyEmail      String?         @default("tushar7738812028@gmail.com")
+  companyPhone      String?         @default("+91 77388 12028")
+  companyWebsite    String?         @default("quantumreachmedia.com")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -426,3 +442,13 @@ model AuditLog {
 
   @@index([userId, action, resource, createdAt])
 }
+
+model PendingGoogleConnection {
+  id            String   @id @default(cuid())
+  userId        String
+  accessToken   String   @db.Text
+  refreshToken  String   @db.Text
+  expiryDate    DateTime
+  createdAt     DateTime @default(now())
+}
+

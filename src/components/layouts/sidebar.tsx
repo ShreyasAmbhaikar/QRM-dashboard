@@ -82,7 +82,6 @@ const NAV_SECTIONS: NavSection[] = [
       { title: 'Web Performance', href: '/dashboard/performance', icon: Gauge },
       { title: 'Notifications', href: '/dashboard/notifications', icon: Bell },
       { title: 'Activity Audit Log', href: '/dashboard/activity-log', icon: Activity },
-      { title: 'Agency Settings', href: '/dashboard/settings', icon: Settings },
     ],
   },
 ];
@@ -92,20 +91,19 @@ export function Sidebar({ userRole: _userRole }: SidebarProps) {
 
   return (
     <aside className="w-72 border-r border-border bg-card flex flex-col h-screen sticky top-0 z-30 transition-all select-none animate-in slide-in-from-left duration-250">
-      {/* Workspace Switcher */}
-      <div className="p-3.5 border-b border-border">
-        <button className="w-full flex items-center justify-between p-2 rounded-md bg-muted/40 hover:bg-accent border border-border/80 transition-all group">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-7 w-7 rounded-md bg-primary/15 border border-primary/30 text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-sm animate-pulse">
-              <Zap className="h-3.5 w-3.5" />
-            </div>
-            <div className="flex flex-col text-left truncate">
-              <span className="font-semibold text-xs leading-tight truncate">Quantum Reach</span>
-              <span className="text-[10px] text-muted-foreground font-medium">Enterprise Pro</span>
-            </div>
-          </div>
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
-        </button>
+      {/* Branding Header */}
+      <div className="p-5 border-b border-border flex items-center gap-3 select-none">
+        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white flex items-center justify-center font-bold shrink-0 shadow-lg shadow-primary/20">
+          <span className="font-sans font-black text-lg tracking-tight select-none">Q</span>
+        </div>
+        <div className="flex flex-col text-left">
+          <span className="font-black text-sm leading-tight tracking-tight text-foreground">
+            Quantum Reach
+          </span>
+          <span className="font-black text-[10px] leading-none tracking-widest text-primary uppercase mt-0.5">
+            Media
+          </span>
+        </div>
       </div>
 
       {/* Quick Search Shortcut Trigger */}
@@ -173,22 +171,20 @@ export function Sidebar({ userRole: _userRole }: SidebarProps) {
         ))}
       </div>
 
-      {/* Footer Profile User Card */}
-      <div className="p-3 border-t border-border bg-muted/20">
-        <div className="flex items-center justify-between p-2 rounded-md bg-card border border-border shadow-sm">
-          <div className="flex items-center gap-2.5 truncate">
-            <div className="relative">
-              <div className="h-7 w-7 rounded-md bg-primary/20 border border-primary/30 text-primary font-bold flex items-center justify-center text-xs">
-                SA
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-background animate-pulse" />
-            </div>
-            <div className="flex flex-col truncate">
-              <span className="text-xs font-semibold text-foreground truncate leading-tight">Shreyas A.</span>
-              <span className="text-[10px] text-muted-foreground truncate">Agency Super Admin</span>
-            </div>
-          </div>
-        </div>
+      {/* Footer Settings Button */}
+      <div className="p-3.5 border-t border-border bg-muted/10">
+        <Link
+          href="/dashboard/settings"
+          className={cn(
+            "w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-bold transition-all justify-center sm:justify-start",
+            pathname === '/dashboard/settings'
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+          )}
+        >
+          <Settings className="h-4 w-4 shrink-0" />
+          <span>Agency Settings</span>
+        </Link>
       </div>
     </aside>
   );
