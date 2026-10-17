@@ -1,7 +1,9 @@
+import React from 'react';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getAgreements } from '@/features/agreements/actions';
+import { AgreementList } from '@/features/agreements/components/agreement-list';
 
 export default async function AgreementsPage() {
   const session = await auth();
@@ -11,41 +13,44 @@ export default async function AgreementsPage() {
 
   // Get agreements
   const response = await getAgreements();
-  const agreements = response.success ? response.data : [];
+  let agreements = response.success ? response.data : [];
 
-  const firstAgreement = agreements[0];
-  if (firstAgreement) {
-    // Redirect to the first (most recently created/updated) agreement
-    redirect(`/dashboard/agreements/${firstAgreement.id}`);
-  }
+  if (!agreements || agreements.length === 0) {
+    // If no agreements exist, find or create a default client
+    let client = await db.client.findFirst();
+    if (!client) {
+      client = await db.client.create({
+        data: {
+          name: 'Dr. Chintan Gujarathi',
+          domain: 'drchintangujarathi.com',
+          industry: 'Medical/Cosmetic',
+          status: 'ACTIVE',
+        },
+      });
+    }
 
-  // If no agreements exist, find or create a default client
-  let client = await db.client.findFirst();
-  if (!client) {
-    client = await db.client.create({
-      data: {
-        name: 'Dr. Chintan Gujarathi',
-        domain: 'drchintangujarathi.com',
-        industry: 'Medical/Cosmetic',
-        status: 'ACTIVE',
-      },
-    });
-  }
-
-  // Create default template agreement
-  const DEFAULT_AGREEMENT_TEMPLATE = `<p>This Agreement is made on <strong>____________________</strong> between:</p>
-<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 16px;">
-  <tr>
-    <td style="width: 50%; border: 1px solid #cbd5e1; padding: 8px; vertical-align: top;">
-      <strong>Service Provider:</strong> Quantum Reach Media<br />
-      <strong>Address:</strong> _________________________________
-    </td>
-    <td style="width: 50%; border: 1px solid #cbd5e1; padding: 8px; vertical-align: top;">
-      <strong>Client:</strong> Dr. Chintan Gujarathi<br />
-      <strong>Business Name:</strong> Dr. Chintan Gujarathi – Plastic & Cosmetic Surgery Clinic<br />
-      <strong>Address:</strong> _________________________________
-    </td>
-  </tr>
+    // Create default template agreement
+    const DEFAULT_AGREEMENT_TEMPLATE = `<p>This Agreement is made on <strong>____________________</strong> between:</p>
+<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 16px; table-layout: fixed;">
+  <thead>
+    <tr style="background-color: #faf5ff; border-bottom: 1px solid #cbd5e1;">
+      <th style="width: 50%; border-right: 1px solid #cbd5e1; padding: 8px; text-align: left; font-weight: bold; color: #581c87; font-size: 9.5px; text-transform: uppercase;">Service Provider</th>
+      <th style="width: 50%; padding: 8px; text-align: left; font-weight: bold; color: #581c87; font-size: 9.5px; text-transform: uppercase;">Client Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="width: 50%; border-right: 1px solid #cbd5e1; padding: 10px; vertical-align: top; color: #334155; font-size: 9px; line-height: 1.4;">
+        <strong>Company Name:</strong> Quantum Reach Media<br />
+        <strong>Address:</strong> _________________________________
+      </td>
+      <td style="width: 50%; padding: 10px; vertical-align: top; color: #334155; font-size: 9px; line-height: 1.4;">
+        <strong>Client Name:</strong> Dr. Chintan Gujarathi<br />
+        <strong>Business Name:</strong> Dr. Chintan Gujarathi – Plastic & Cosmetic Surgery Clinic<br />
+        <strong>Address:</strong> _________________________________
+      </td>
+    </tr>
+  </tbody>
 </table>
 
 <h1>PURPOSE OF AGREEMENT</h1>
@@ -89,7 +94,7 @@ export default async function AgreementsPage() {
 <hr />
 
 <h1>SERVICE FEES</h1>
-<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 12px; background-color: #faf5ff;">
+<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 12px; background-color: #faf5ff; table-layout: fixed;">
   <tr>
     <td style="padding: 10px; border: 1px solid #cbd5e1;">
       <strong>Total Service Amount:</strong> INR 96,000/- (Ninety-Six Thousand Rupees Only)
@@ -125,25 +130,33 @@ export default async function AgreementsPage() {
 <h1>ACCEPTANCE</h1>
 <p>By signing below, both parties agree to the terms and conditions mentioned in this agreement.</p>`;
 
-  const newAgreement = await db.agreement.create({
-    data: {
-      title: 'Dr. Chintan Gujarathi — Plastic & Cosmetic Surgery Clinic Service Agreement',
-      clientId: client.id,
-      monthlyFee: 8000,
-      startDate: new Date(),
-      content: DEFAULT_AGREEMENT_TEMPLATE,
-      companyName: 'Quantum Reach Media',
-      companyEmail: 'tushar7738812028@gmail.com',
-      companyPhone: '+91 77388 12028',
-      companyWebsite: 'quantumreachmedia.com',
-      deliverables: [
-        'Google My Business (GMB) Optimization',
-        'SEO-Friendly Website Development',
-        '12 Months Continuous GMB Maintenance',
-      ],
-      createdById: session.user.id,
-    },
-  });
+    const newAgreement = await db.agreement.create({
+      data: {
+        title: 'Dr. Chintan Gujarathi — Plastic & Cosmetic Surgery Clinic Service Agreement',
+        clientId: client.id,
+        monthlyFee: 8000,
+        startDate: new Date(),
+        content: DEFAULT_AGREEMENT_TEMPLATE,
+        companyName: 'Quantum Reach Media',
+        companyEmail: 'tushar7738812028@gmail.com',
+        companyPhone: '+91 77388 12028',
+        companyWebsite: 'quantumreachmedia.com',
+        deliverables: [
+          'Google My Business (GMB) Optimization',
+          'SEO-Friendly Website Development',
+          '12 Months Continuous GMB Maintenance',
+        ],
+        createdById: session.user.id,
+      },
+      include: { client: true },
+    });
 
-  redirect(`/dashboard/agreements/${newAgreement.id}`);
+    agreements = [newAgreement as any];
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4">
+      <AgreementList initialAgreements={agreements} />
+    </div>
+  );
 }

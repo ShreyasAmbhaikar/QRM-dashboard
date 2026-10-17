@@ -19,17 +19,25 @@ interface AgreementFormProps {
 
 const DEFAULT_AGREEMENT_TEMPLATE = `<p>This Agreement is made on <strong>____________________</strong> between:</p>
 <table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 16px;">
-  <tr>
-    <td style="width: 50%; border: 1px solid #cbd5e1; padding: 8px; vertical-align: top;">
-      <strong>Service Provider:</strong> Quantum Reach Media<br />
-      <strong>Address:</strong> _________________________________
-    </td>
-    <td style="width: 50%; border: 1px solid #cbd5e1; padding: 8px; vertical-align: top;">
-      <strong>Client:</strong> Dr. Chintan Gujarathi<br />
-      <strong>Business Name:</strong> Dr. Chintan Gujarathi – Plastic & Cosmetic Surgery Clinic<br />
-      <strong>Address:</strong> _________________________________
-    </td>
-  </tr>
+  <thead>
+    <tr style="background-color: #faf5ff; border-bottom: 1px solid #cbd5e1;">
+      <th style="width: 50%; border-right: 1px solid #cbd5e1; padding: 8px; text-align: left; font-weight: bold; color: #581c87; font-size: 9.5px; text-transform: uppercase;">Service Provider</th>
+      <th style="width: 50%; padding: 8px; text-align: left; font-weight: bold; color: #581c87; font-size: 9.5px; text-transform: uppercase;">Client Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="width: 50%; border-right: 1px solid #cbd5e1; padding: 10px; vertical-align: top; color: #334155; font-size: 9px; line-height: 1.4;">
+        <strong>Company Name:</strong> Quantum Reach Media<br />
+        <strong>Address:</strong> _________________________________
+      </td>
+      <td style="width: 50%; padding: 10px; vertical-align: top; color: #334155; font-size: 9px; line-height: 1.4;">
+        <strong>Client Name:</strong> Dr. Chintan Gujarathi<br />
+        <strong>Business Name:</strong> Dr. Chintan Gujarathi – Plastic & Cosmetic Surgery Clinic<br />
+        <strong>Address:</strong> _________________________________
+      </td>
+    </tr>
+  </tbody>
 </table>
 
 <h1>PURPOSE OF AGREEMENT</h1>

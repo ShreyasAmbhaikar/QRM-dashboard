@@ -8,9 +8,11 @@ import {
   createDefaultAgreementAction,
   getPublicAgreementById,
   getAgreementHistoryAction,
-  deleteAgreementSignatureAction
+  deleteAgreementSignatureAction,
+  resetAgreementToDefaultAction
 } from '../actions';
 import { SignatureCanvas } from './signature-canvas';
+import { AgreementPreview } from './agreement-preview';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +23,10 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TableCell } from '@tiptap/extension-table-cell';
 import { useRouter } from 'next/navigation';
 import { 
   FileText, 
@@ -49,7 +55,12 @@ import {
   Redo,
   ArrowUp,
   ArrowDown,
-  Trash
+  Trash,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  RotateCcw,
+  Settings
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -57,6 +68,66 @@ interface AgreementDashboardProps {
   initialAgreement: AgreementWithClient;
   clients: { id: string; name: string; domain: string }[];
 }
+
+const CustomTable = Table.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableRow = TableRow.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
 
 interface PageEditorProps {
   initialContent: string;
@@ -66,7 +137,18 @@ interface PageEditorProps {
 
 const PageEditor = React.memo(({ initialContent, onChange, onFocus }: PageEditorProps) => {
   const editor = useEditor({
-    extensions: [StarterKit, Underline, TextStyle, Color],
+    extensions: [
+      StarterKit,
+      Underline,
+      TextStyle,
+      Color,
+      CustomTable.configure({
+        resizable: false,
+      }),
+      CustomTableRow,
+      CustomTableHeader,
+      CustomTableCell,
+    ],
     content: initialContent,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
@@ -98,6 +180,8 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
   const [isClean, setIsClean] = useState(true);
   const [activeTab, setActiveTab] = useState<'workspace' | 'history'>('workspace');
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Split and manage pages array dynamically
   const [pages, setPages] = useState<string[]>([]);
@@ -122,6 +206,56 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
     companyWebsite: agreement.companyWebsite || 'quantumreachmedia.com',
     deliverables: Array.isArray(agreement.deliverables) ? (agreement.deliverables as string[]) : [],
   });
+
+  const [openSections, setOpenSections] = useState({
+    execution: true,
+    pageManager: false,
+    financial: false,
+    branding: false,
+  });
+
+  // Debounced Auto-Save Effect
+  useEffect(() => {
+    if (isClean || loading || !pages || pages.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      const combinedHtml = pages.join('<hr />');
+      try {
+        const res = await updateAgreement({
+          id: agreement.id,
+          title: editMetadata.title,
+          monthlyFee: Number(editMetadata.monthlyFee),
+          startDate: editMetadata.startDate,
+          endDate: editMetadata.endDate || undefined,
+          content: combinedHtml,
+          companyName: editMetadata.companyName,
+          companyEmail: editMetadata.companyEmail,
+          companyPhone: editMetadata.companyPhone,
+          companyWebsite: editMetadata.companyWebsite,
+          deliverables: editMetadata.deliverables,
+        });
+
+        if (res.success && res.data) {
+          setAgreement((prev) => ({
+            ...prev,
+            ...res.data,
+          }));
+          setIsClean(true);
+        }
+      } catch (err) {
+        console.error("Auto-save error:", err);
+      }
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [pages, editMetadata, isClean, loading, agreement.id]);
+
+  const toggleSection = (section: keyof typeof openSections) => {
+    setOpenSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
 
   const { success: toastSuccess, error: toastError } = useToast();
 
@@ -246,6 +380,44 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
     }
   };
 
+  const handleResetToDefault = async () => {
+    if (!confirm('Are you sure you want to reset this agreement back to the default template? This will erase all current text edits, reset any signatures, and cannot be undone.')) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await resetAgreementToDefaultAction(agreement.id);
+      if (res.success && res.data) {
+        setAgreement({
+          ...agreement,
+          ...res.data,
+        });
+        const contentPages = res.data.content.split(/<hr\b[^>]*>/i);
+        setPages(contentPages);
+        setEditMetadata({
+          title: res.data.title,
+          monthlyFee: res.data.monthlyFee,
+          startDate: new Date(res.data.startDate).toISOString().split('T')[0],
+          endDate: res.data.endDate ? new Date(res.data.endDate).toISOString().split('T')[0] : '',
+          companyName: res.data.companyName || 'Quantum Reach Media',
+          companyEmail: res.data.companyEmail || 'tushar7738812028@gmail.com',
+          companyPhone: res.data.companyPhone || '+91 77388 12028',
+          companyWebsite: res.data.companyWebsite || 'quantumreachmedia.com',
+          deliverables: Array.isArray(res.data.deliverables) ? (res.data.deliverables as string[]) : [],
+        });
+        setIsClean(true);
+        toastSuccess('Template Restored', 'The agreement has been reset to the default template successfully.');
+        router.refresh();
+      } else {
+        toastError('Reset Failed', !res.success ? res.error.message : 'Failed to reset agreement.');
+      }
+    } catch (err: any) {
+      toastError('Error', err.message || 'An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSignClick = (role: 'CLIENT' | 'PROVIDER') => {
     setSigningRole(role);
     setIsSignOpen(true);
@@ -334,35 +506,33 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
   ];
 
   // Audit Logs summary calculations
-  const exportLogs = historyLogs.filter(log => log.action === 'EXPORT' || log.action === 'CREATE');
+  const exportLogs = historyLogs.filter(log => log.action === 'EXPORT');
   const lastDownloadLog = historyLogs.find(log => log.action === 'EXPORT');
   const lastDownloadTime = lastDownloadLog ? new Date(lastDownloadLog.createdAt).toLocaleString() : 'Never downloaded';
-  const creationLog = historyLogs.find(log => log.action === 'CREATE');
-  const creationTime = creationLog ? new Date(creationLog.createdAt).toLocaleString() : new Date(agreement.createdAt).toLocaleString();
 
   return (
     <div className="space-y-6">
       {/* Top dashboard control header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <FileText className="h-5 w-5 text-purple-700" />
-            {agreement.title}
-          </h1>
-          <p className="text-[11px] text-muted-foreground">
-            Client: <span className="font-semibold text-primary">{agreement.client.name}</span> • Domain: <span className="font-mono text-primary/80">{agreement.client.domain}</span>
-          </p>
+        <div className="flex-1 max-w-xl">
+          <div className="flex items-center gap-2.5 text-muted-foreground focus-within:text-purple-400 group">
+            <FileText className="h-5 w-5 text-purple-700 shrink-0" />
+            <input
+              type="text"
+              value={editMetadata.title}
+              onChange={(e) => {
+                setEditMetadata({ ...editMetadata, title: e.target.value });
+                setIsClean(false);
+              }}
+              className="bg-transparent border-none outline-none font-bold text-lg text-foreground focus:ring-0 w-full p-0 leading-tight border-b border-transparent focus:border-purple-500/30 transition-all font-sans"
+              placeholder="Contract Title"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            onClick={handleCreateNew}
-            disabled={loading}
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-xs text-foreground"
-          >
-            <Plus className="h-4 w-4" /> Create New Contract
-          </Button>
+        <div className="flex items-center gap-3 relative">
+          <span className="text-[10px] text-muted-foreground mr-1">
+            {loading ? 'Saving...' : isClean ? 'All changes saved' : 'Unsaved changes...'}
+          </span>
 
           <Button
             onClick={handleSaveTerms}
@@ -374,14 +544,63 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
                 : 'bg-emerald-600 hover:bg-emerald-700'
             }`}
           >
-            <Save className="h-4 w-4" /> {isClean ? 'Terms Saved' : 'Save Changes'}
+            <Save className="h-4 w-4" /> Save
+          </Button>
+
+          <Button
+            onClick={() => setIsPreviewOpen(true)}
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs text-foreground font-semibold"
+          >
+            <Eye className="h-4 w-4" /> Preview
           </Button>
 
           <Link href={`/api/agreements/${agreement.id}/pdf`} target="_blank">
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs text-foreground">
-              <Download className="h-4 w-4" /> Download PDF
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs text-foreground font-semibold">
+              <Download className="h-4 w-4" /> Download
             </Button>
           </Link>
+
+          <div className="relative">
+            <Button
+              onClick={() => setOptionsOpen(!optionsOpen)}
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 text-foreground cursor-pointer"
+              title="Options"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+            {optionsOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-45" 
+                  onClick={() => setOptionsOpen(false)}
+                />
+                <div className="absolute right-0 mt-1.5 w-48 bg-card border border-border rounded-xl shadow-xl p-1 z-50 animate-in fade-in slide-in-from-top-1 duration-100">
+                  <button
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      handleCreateNew();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted/50 rounded-lg flex items-center gap-2 cursor-pointer font-medium border-none bg-transparent"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-purple-500 animate-in spin-in-12 duration-300" /> Create New Contract
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      handleResetToDefault();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-500/10 rounded-lg flex items-center gap-2 cursor-pointer font-medium border-none bg-transparent"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 text-red-500" /> Reset to Default
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -412,7 +631,7 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
       {activeTab === 'workspace' ? (
         <>
           {/* Editor Formatting Sticky Panel */}
-          <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1.5 p-2 bg-card border border-border rounded-xl shadow-md">
+          <div className="sticky top-14 z-10 flex flex-wrap items-center gap-1.5 p-2 bg-card border border-border rounded-xl shadow-md">
             <span className="text-[10px] uppercase font-bold tracking-wider text-purple-700 px-2 border-r border-border mr-1">
               Page {activeEditorIndex + 1} Editor
             </span>
@@ -424,7 +643,7 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
               size="icon"
               className="h-8 w-8 text-foreground"
               onClick={() => activeEditorInstance?.chain().focus().undo().run()}
-              disabled={!activeEditorInstance?.can().undo()}
+              disabled={!activeEditorInstance || !activeEditorInstance.can().undo()}
               title="Undo"
             >
               <Undo className="h-4 w-4" />
@@ -435,7 +654,7 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
               size="icon"
               className="h-8 w-8 text-foreground"
               onClick={() => activeEditorInstance?.chain().focus().redo().run()}
-              disabled={!activeEditorInstance?.can().redo()}
+              disabled={!activeEditorInstance || !activeEditorInstance.can().redo()}
               title="Redo"
             >
               <Redo className="h-4 w-4" />
@@ -554,55 +773,61 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* Left 2 Columns: Editable A4 Sheets (ALWAYS Rendered in Paper-White layout) */}
-            <div className="lg:col-span-2 space-y-8 select-none py-6 bg-[#09090b] rounded-2xl border border-border p-4 sm:p-8 flex flex-col items-center w-full overflow-x-auto">
-              <div className="min-w-[800px] flex flex-col items-center gap-8 w-full">
+            <div className="lg:col-span-2 space-y-4 select-none py-6 bg-[#09090b] rounded-2xl border border-border p-2 sm:p-4 flex flex-col items-center w-full overflow-hidden">
+              <div className="flex flex-col items-center gap-4 w-full">
                 {pages.map((pageHtml, index) => {
                 const pageNumber = index + 1;
                 const totalPages = pages.length;
                 const isLastPage = pageNumber === totalPages;
 
                 return (
-                  <div 
-                    key={index}
-                    className="relative w-[794px] h-[1123px] mx-auto bg-white text-slate-800 border border-slate-200 shadow-xl rounded-xl p-10 pb-20 flex flex-col justify-between overflow-hidden"
-                  >
-                    <div>
-                      {/* Header Page */}
-                      <div className="relative flex justify-between items-end border-b border-[#a78bfa] pb-4 mb-6 z-20">
-                        {/* Overflow triangle hidden behind rounded container corner */}
-                        <div 
-                          className="absolute top-[-44px] right-[-44px] w-[140px] h-[140px] bg-[#581c87]" 
-                          style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 0)' }}
-                        />
-                        
-                        <div className="flex items-center gap-3">
-                          <svg width="40" height="40" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-purple-700">
-                            <circle cx="100" cy="100" r="75" stroke="#581c87" strokeWidth="18" />
-                            <path d="M100 25 A75 75 0 0 1 175 100 L140 100 A40 40 0 0 0 100 60 Z" fill="#581c87" />
-                            <circle cx="100" cy="100" r="32" fill="#7c3aed" />
-                            <path d="M125 125 L175 175" stroke="#581c87" strokeWidth="22" strokeLinecap="round" />
-                          </svg>
-                          <div>
-                            <h2 className="text-lg font-bold tracking-tight text-[#581c87] leading-none">Quantum Reach</h2>
-                            <span className="text-[9px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">Media</span>
+                  <div key={index} className="w-full flex justify-center overflow-hidden h-[960px]">
+                    <div 
+                      className="relative w-[794px] h-[1123px] bg-white text-slate-800 border border-slate-200 shadow-xl rounded-xl p-12 pb-20 flex flex-col justify-between overflow-hidden shrink-0 origin-top scale-[0.83]"
+                    >
+                      {/* Top-Right Decorative Slanted Triangle */}
+                      <div 
+                        className="absolute top-0 right-0 w-[120px] h-[120px] bg-[#581c87] z-10" 
+                        style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 0)' }}
+                      />
+                      
+                      <div>
+                        {/* Header Page */}
+                        <div className="relative flex justify-between items-center border-b border-[#a78bfa] pb-3 mb-4 z-20">
+                          
+                          <div className="flex items-center gap-4">
+                            <img src="/qrm-logo.png" alt="QRM Logo" className="h-12 object-contain shrink-0" />
+                            <div className="flex flex-col text-left">
+                              <span className="font-extrabold text-[15px] leading-none tracking-tight text-[#581c87] font-sans">
+                                Quantum Reach
+                              </span>
+                              <span className="font-bold text-[9px] leading-none tracking-[0.25em] text-[#7c3aed] uppercase mt-1 font-sans">
+                                Media
+                              </span>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="flex flex-col gap-0.5 text-[9px] text-[#475569] font-medium mr-28">
-                          <div className="flex items-center gap-1 justify-end">
-                            <span>{editMetadata.companyWebsite}</span>
-                            <Globe className="h-2.5 w-2.5 text-[#581c87]" />
-                          </div>
-                          <div className="flex items-center gap-1 justify-end">
-                            <span>{editMetadata.companyPhone}</span>
-                            <Phone className="h-2.5 w-2.5 text-[#581c87]" />
-                          </div>
-                          <div className="flex items-center gap-1 justify-end">
-                            <span>{editMetadata.companyEmail}</span>
-                            <Mail className="h-2.5 w-2.5 text-[#581c87]" />
+                          <div className="flex flex-col gap-0.5 text-[8.5px] text-[#475569] font-medium mr-24 z-20">
+                            <div className="flex items-center gap-1 justify-end">
+                              <span>{editMetadata.companyWebsite || 'quantumreachmedia.com'}</span>
+                              <div className="p-0.5 rounded bg-[#581c87] text-white">
+                                <Globe className="h-2 w-2" />
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 justify-end">
+                              <span>{editMetadata.companyPhone || '+91 77388 12028'}</span>
+                              <div className="p-0.5 rounded bg-[#581c87] text-white">
+                                <Phone className="h-2 w-2" />
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 justify-end">
+                              <span>{editMetadata.companyEmail || 'tushar7738812028@gmail.com'}</span>
+                              <div className="p-0.5 rounded bg-[#581c87] text-white">
+                                <Mail className="h-2 w-2" />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
                       {pageNumber === 1 && (
                         <div className="text-center py-2">
@@ -727,18 +952,19 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
                     )}
 
                     {/* Brand Footer */}
-                    <div className="relative h-[40px] flex items-center justify-between px-2 border-t border-[#cbd5e1] mt-4 overflow-hidden bg-white">
-                      <svg className="absolute left-2 bottom-0 h-3 w-40 overflow-visible" viewBox="0 0 160 16">
+                    <div className="absolute bottom-0 left-0 right-0 h-[60px] flex items-center justify-between px-10 border-t border-[#cbd5e1] bg-white z-20 overflow-hidden">
+                      <svg className="absolute left-10 bottom-0 h-4 w-40 overflow-visible" viewBox="0 0 160 16">
                         <polygon points="20 16, 40 0, 80 0, 60 16" fill="#7c3aed" opacity="0.8" />
                         <polygon points="70 16, 90 0, 130 0, 110 16" fill="#581c87" />
                       </svg>
-                      <span className="text-[8px] text-[#94a3b8] font-semibold tracking-wider ml-36">
+                      <span className="text-[9px] text-[#94a3b8] font-semibold tracking-wider">
                         Quantum Reach Media • Confidential Service Agreement
                       </span>
-                      <span className="text-[9px] font-bold text-[#581c87]">
+                      <span className="text-[10px] font-bold text-[#581c87]">
                         Page {pageNumber} of {totalPages}
                       </span>
                     </div>
+                  </div>
                   </div>
                 );
               })}
@@ -746,86 +972,105 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
             </div>
 
             {/* Right 1 Column: Metadata & Page Manager Panels */}
-            <div className="space-y-6">
+            <div className="space-y-4">
               
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base text-foreground font-bold">Execution Workflow</CardTitle>
-                  <CardDescription className="text-xs">Copy link to share contract with the client</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4 text-xs">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Client Signing Link</label>
-                    <div className="flex gap-2">
-                      <Input
-                        readOnly
-                        value={signingLink}
-                        className="h-8 text-xs font-mono select-all text-foreground bg-muted/20"
-                      />
-                      <Button variant="outline" size="icon" onClick={handleCopyLink} className="h-8 w-8 text-foreground">
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+              {/* Execution Workflow Accordion */}
+              <div className="border border-border bg-card/25 rounded-xl overflow-hidden">
+                <div 
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/10 transition-all select-none"
+                  onClick={() => toggleSection('execution')}
+                >
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm text-foreground font-bold">Execution Workflow</span>
+                    <span className="text-[10px] text-muted-foreground">Copy link to share contract with the client</span>
                   </div>
-
-                  <div className="border-t border-border pt-4 space-y-3">
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span className="text-muted-foreground font-medium flex items-center gap-1">
-                        Client Signature:
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`font-semibold px-2 py-0.5 rounded ${
-                            agreement.clientSignature
-                              ? 'bg-emerald-500/10 text-emerald-400'
-                              : 'bg-amber-500/10 text-amber-400'
-                          }`}
-                        >
-                          {agreement.clientSignature ? 'Signed' : 'Awaiting'}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={handleSyncStatus}
-                          disabled={loading}
-                          className="h-6 w-6 text-muted-foreground hover:text-purple-700"
-                          title="Sync signature status from client"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
+                  {openSections.execution ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                {openSections.execution && (
+                  <div className="p-4 pt-0 space-y-4 text-xs">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-muted-foreground">Client Signing Link</label>
+                      <div className="flex gap-2">
+                        <Input
+                          readOnly
+                          value={signingLink}
+                          className="h-8 text-xs font-mono select-all text-foreground bg-muted/20"
+                        />
+                        <Button variant="outline" size="icon" onClick={handleCopyLink} className="h-8 w-8 text-foreground">
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span className="text-muted-foreground font-medium">Provider Signature:</span>
-                      <span
-                        className={`font-semibold px-2 py-0.5 rounded ${
-                          agreement.providerSignature
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-amber-500/10 text-amber-400'
-                        }`}
-                      >
-                        {agreement.providerSignature ? 'Signed' : 'Awaiting'}
-                      </span>
+                    <div className="border-t border-border pt-4 space-y-3">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-muted-foreground font-medium flex items-center gap-1">
+                          Client Signature:
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`font-semibold px-2 py-0.5 rounded ${
+                              agreement.clientSignature
+                                ? 'bg-emerald-500/10 text-emerald-400'
+                                : 'bg-amber-500/10 text-amber-400'
+                            }`}
+                          >
+                            {agreement.clientSignature ? 'Signed' : 'Awaiting'}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleSyncStatus}
+                            disabled={loading}
+                            className="h-6 w-6 text-muted-foreground hover:text-purple-700"
+                            title="Sync signature status from client"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-muted-foreground font-medium">Provider Signature:</span>
+                        <span
+                          className={`font-semibold px-2 py-0.5 rounded ${
+                            agreement.providerSignature
+                              ? 'bg-emerald-500/10 text-emerald-400'
+                              : 'bg-amber-500/10 text-amber-400'
+                          }`}
+                        >
+                          {agreement.providerSignature ? 'Signed' : 'Awaiting'}
+                        </span>
+                      </div>
+
+                      {!agreement.providerSignature && (
+                        <Button
+                          onClick={() => handleSignClick('PROVIDER')}
+                          className="w-full mt-2 gap-1.5 text-xs bg-purple-700 hover:bg-purple-800 text-white shadow"
+                        >
+                          <FileSignature className="h-4 w-4" /> Sign as Service Provider
+                        </Button>
+                      )}
                     </div>
-
-                    {!agreement.providerSignature && (
-                      <Button
-                        onClick={() => handleSignClick('PROVIDER')}
-                        className="w-full mt-2 gap-1.5 text-xs bg-purple-700 hover:bg-purple-800 text-white shadow"
-                      >
-                        <FileSignature className="h-4 w-4" /> Sign as Service Provider
-                      </Button>
-                    )}
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </div>
 
-              {/* Dynamic Page Manager Section (Replaces Index Deliverables) */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base text-foreground font-bold flex items-center justify-between">
-                    <span>Page Manager</span>
+              {/* Page Manager Accordion */}
+              <div className="border border-border bg-card/25 rounded-xl overflow-hidden">
+                <div 
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/10 transition-all select-none"
+                  onClick={() => toggleSection('pageManager')}
+                >
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm text-foreground font-bold">Page Manager</span>
+                    <span className="text-[10px] text-muted-foreground">Reorder or add contract pages</span>
+                  </div>
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="outline"
@@ -838,187 +1083,222 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
                     >
                       <Plus className="h-3.5 w-3.5" /> Add Page
                     </Button>
-                  </CardTitle>
-                  <CardDescription className="text-xs">Reorder or add contract pages</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                    {pages.map((_, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-muted/20 border border-border p-2 rounded-lg text-xs">
-                        <div className="font-semibold text-foreground">
-                          Page {idx + 1} {idx === 0 ? '(Intro)' : idx === pages.length - 1 ? '(Acceptance)' : '(Extra)'}
-                        </div>
-                        <div className="flex items-center gap-0.5">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-foreground"
-                            disabled={idx === 0}
-                            onClick={() => {
-                              const updated = [...pages];
-                              const temp = updated[idx] as string;
-                              updated[idx] = updated[idx - 1] as string;
-                              updated[idx - 1] = temp;
-                              setPages(updated);
-                              setIsClean(false);
-                            }}
-                            title="Move Up"
-                          >
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-foreground"
-                            disabled={idx === pages.length - 1}
-                            onClick={() => {
-                              const updated = [...pages];
-                              const temp = updated[idx] as string;
-                              updated[idx] = updated[idx + 1] as string;
-                              updated[idx + 1] = temp;
-                              setPages(updated);
-                              setIsClean(false);
-                            }}
-                            title="Move Down"
-                          >
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-red-500 hover:text-red-700"
-                            disabled={pages.length <= 1}
-                            onClick={() => {
-                              const updated = pages.filter((_, i) => i !== idx);
-                              setPages(updated);
-                              setIsClean(false);
-                              toastSuccess('Page Removed', `Page ${idx + 1} deleted.`);
-                            }}
-                            title="Delete Page"
-                          >
-                            <Trash className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                    {openSections.pageManager ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={() => toggleSection('pageManager')} />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={() => toggleSection('pageManager')} />
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base text-foreground font-bold">Financial Summary & Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-xs">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Contract Title *</label>
-                    <Input
-                      required
-                      value={editMetadata.title}
-                      onChange={(e) => {
-                        setEditMetadata({ ...editMetadata, title: e.target.value });
-                        setIsClean(false);
-                      }}
-                      className="h-8 text-xs text-foreground"
-                    />
+                </div>
+                {openSections.pageManager && (
+                  <div className="p-4 pt-0">
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                      {pages.map((_, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-muted/20 border border-border p-2 rounded-lg text-xs">
+                          <div className="font-semibold text-foreground">
+                            Page {idx + 1} {idx === 0 ? '(Intro)' : idx === pages.length - 1 ? '(Acceptance)' : '(Extra)'}
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-foreground"
+                              disabled={idx === 0}
+                              onClick={() => {
+                                const updated = [...pages];
+                                const temp = updated[idx] as string;
+                                updated[idx] = updated[idx - 1] as string;
+                                updated[idx - 1] = temp;
+                                setPages(updated);
+                                setIsClean(false);
+                              }}
+                              title="Move Up"
+                            >
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-foreground"
+                              disabled={idx === pages.length - 1}
+                              onClick={() => {
+                                const updated = [...pages];
+                                const temp = updated[idx] as string;
+                                updated[idx] = updated[idx + 1] as string;
+                                updated[idx + 1] = temp;
+                                setPages(updated);
+                                setIsClean(false);
+                              }}
+                              title="Move Down"
+                            >
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-red-500 hover:text-red-700"
+                              disabled={pages.length <= 1}
+                              onClick={() => {
+                                const updated = pages.filter((_, i) => i !== idx);
+                                setPages(updated);
+                                setIsClean(false);
+                                toastSuccess('Page Removed', `Page ${idx + 1} deleted.`);
+                              }}
+                              title="Delete Page"
+                            >
+                              <Trash className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                )}
+              </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+              {/* Financial Summary & Settings Accordion */}
+              <div className="border border-border bg-card/25 rounded-xl overflow-hidden">
+                <div 
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/10 transition-all select-none"
+                  onClick={() => toggleSection('financial')}
+                >
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm text-foreground font-bold">Financial Summary & Settings</span>
+                    <span className="text-[10px] text-muted-foreground">Retainer pricing and scheduling settings</span>
+                  </div>
+                  {openSections.financial ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                {openSections.financial && (
+                  <div className="p-4 pt-0 space-y-4 text-xs">
                     <div className="space-y-1">
-                      <label className="text-[11px] font-semibold text-muted-foreground">Monthly Fee (INR)</label>
+                      <label className="text-[11px] font-semibold text-muted-foreground">Contract Title *</label>
                       <Input
                         required
-                        type="number"
-                        value={editMetadata.monthlyFee}
+                        value={editMetadata.title}
                         onChange={(e) => {
-                          setEditMetadata({ ...editMetadata, monthlyFee: Number(e.target.value) });
+                          setEditMetadata({ ...editMetadata, title: e.target.value });
                           setIsClean(false);
                         }}
-                        className="h-8 text-xs font-mono text-foreground"
+                        className="h-8 text-xs text-foreground"
                       />
                     </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-muted-foreground">Monthly Fee (INR)</label>
+                        <Input
+                          required
+                          type="number"
+                          value={editMetadata.monthlyFee}
+                          onChange={(e) => {
+                            setEditMetadata({ ...editMetadata, monthlyFee: Number(e.target.value) });
+                            setIsClean(false);
+                          }}
+                          className="h-8 text-xs font-mono text-foreground"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-muted-foreground">Start Date *</label>
+                        <Input
+                          required
+                          type="date"
+                          value={editMetadata.startDate}
+                          onChange={(e) => {
+                            setEditMetadata({ ...editMetadata, startDate: e.target.value });
+                            setIsClean(false);
+                          }}
+                          className="h-8 text-xs text-foreground"
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-1">
-                      <label className="text-[11px] font-semibold text-muted-foreground">Start Date *</label>
+                      <label className="text-[11px] font-semibold text-muted-foreground">End Date (Optional)</label>
                       <Input
-                        required
                         type="date"
-                        value={editMetadata.startDate}
+                        value={editMetadata.endDate}
                         onChange={(e) => {
-                          setEditMetadata({ ...editMetadata, startDate: e.target.value });
+                          setEditMetadata({ ...editMetadata, endDate: e.target.value });
                           setIsClean(false);
                         }}
                         className="h-8 text-xs text-foreground"
                       />
                     </div>
                   </div>
+                )}
+              </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">End Date (Optional)</label>
-                    <Input
-                      type="date"
-                      value={editMetadata.endDate}
-                      onChange={(e) => {
-                        setEditMetadata({ ...editMetadata, endDate: e.target.value });
-                        setIsClean(false);
-                      }}
-                      className="h-8 text-xs text-foreground"
-                    />
+              {/* Company Branding Info Accordion */}
+              <div className="border border-border bg-card/25 rounded-xl overflow-hidden">
+                <div 
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/10 transition-all select-none"
+                  onClick={() => toggleSection('branding')}
+                >
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm text-foreground font-bold">Company Branding Info</span>
+                    <span className="text-[10px] text-muted-foreground">Branding assets and coordinates</span>
                   </div>
-                </CardContent>
-              </Card>
+                  {openSections.branding ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                {openSections.branding && (
+                  <div className="p-4 pt-0 space-y-3 text-xs">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-muted-foreground">Company Name</label>
+                      <Input
+                        value={editMetadata.companyName}
+                        onChange={(e) => {
+                          setEditMetadata({ ...editMetadata, companyName: e.target.value });
+                          setIsClean(false);
+                        }}
+                        className="h-8 text-xs text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-muted-foreground">Company Website</label>
+                      <Input
+                        value={editMetadata.companyWebsite}
+                        onChange={(e) => {
+                          setEditMetadata({ ...editMetadata, companyWebsite: e.target.value });
+                          setIsClean(false);
+                        }}
+                        className="h-8 text-xs text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-muted-foreground">Contact Email</label>
+                      <Input
+                        type="email"
+                        value={editMetadata.companyEmail}
+                        onChange={(e) => {
+                          setEditMetadata({ ...editMetadata, companyEmail: e.target.value });
+                          setIsClean(false);
+                        }}
+                        className="h-8 text-xs text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-muted-foreground">Contact Phone</label>
+                      <Input
+                        value={editMetadata.companyPhone}
+                        onChange={(e) => {
+                          setEditMetadata({ ...editMetadata, companyPhone: e.target.value });
+                          setIsClean(false);
+                        }}
+                        className="h-8 text-xs text-foreground"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base text-foreground font-bold">Company Branding Info</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-xs">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Company Name</label>
-                    <Input
-                      value={editMetadata.companyName}
-                      onChange={(e) => {
-                        setEditMetadata({ ...editMetadata, companyName: e.target.value });
-                        setIsClean(false);
-                      }}
-                      className="h-8 text-xs text-foreground"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Company Website</label>
-                    <Input
-                      value={editMetadata.companyWebsite}
-                      onChange={(e) => {
-                        setEditMetadata({ ...editMetadata, companyWebsite: e.target.value });
-                        setIsClean(false);
-                      }}
-                      className="h-8 text-xs text-foreground"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Contact Email</label>
-                    <Input
-                      type="email"
-                      value={editMetadata.companyEmail}
-                      onChange={(e) => {
-                        setEditMetadata({ ...editMetadata, companyEmail: e.target.value });
-                        setIsClean(false);
-                      }}
-                      className="h-8 text-xs text-foreground"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Contact Phone</label>
-                    <Input
-                      value={editMetadata.companyPhone}
-                      onChange={(e) => {
-                        setEditMetadata({ ...editMetadata, companyPhone: e.target.value });
-                        setIsClean(false);
-                      }}
-                      className="h-8 text-xs text-foreground"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
           </div>
@@ -1037,51 +1317,34 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
           </CardHeader>
           <CardContent className="space-y-6">
             
-            {/* Last Created and Last Downloaded Time Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-purple-50/50 dark:bg-purple-950/20 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30 text-xs">
-                <span className="text-muted-foreground block mb-1 font-semibold">Contract Created At</span>
-                <span className="font-bold text-foreground">{creationTime}</span>
-              </div>
-              <div className="bg-purple-50/50 dark:bg-purple-950/20 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30 text-xs">
-                <span className="text-muted-foreground block mb-1 font-semibold">Last Downloaded At</span>
-                <span className="font-bold text-foreground">{lastDownloadTime}</span>
-              </div>
+            {/* Last Downloaded Time Stat */}
+            <div className="bg-purple-50/50 dark:bg-purple-950/20 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30 text-xs w-full">
+              <span className="text-muted-foreground block mb-1 font-semibold">Last Downloaded At</span>
+              <span className="font-bold text-foreground">{lastDownloadTime}</span>
             </div>
 
-            {/* List logs focused ONLY on exports and creation */}
+            {/* List logs focused ONLY on exports */}
             <div className="relative border-l border-purple-200/50 dark:border-purple-900/30 ml-4 pl-6 space-y-6">
               {exportLogs.map((log) => {
-                const isExport = log.action === 'EXPORT';
                 const meta = log.newData && typeof log.newData === 'object' ? log.newData : {};
 
                 return (
                   <div key={log.id} className="relative">
                     {/* Circle timeline bullet */}
-                    <div className={`absolute left-[-31px] top-1 h-3.5 w-3.5 rounded-full border-2 bg-background flex items-center justify-center ${
-                      isExport ? 'border-indigo-500' : 'border-purple-600'
-                    }`} />
+                    <div className="absolute left-[-31px] top-1 h-3.5 w-3.5 rounded-full border-2 bg-background flex items-center justify-center border-indigo-500" />
                     
                     <div className="space-y-1 text-xs">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-foreground">
-                          {isExport ? 'PDF Document Downloaded' : 'Contract Agreement Initialized'}
+                          PDF Document Downloaded
                         </span>
                         <span className="text-[9px] px-2 py-0.5 rounded-full font-mono bg-muted text-muted-foreground">
-                          {log.action}
+                          EXPORT
                         </span>
                       </div>
                       
                       <p className="text-[10px] text-muted-foreground leading-relaxed">
-                        {isExport ? (
-                          <>
-                            File <span className="font-mono text-purple-600 dark:text-purple-400">{meta.filename}</span> downloaded by {meta.downloader === 'PROVIDER' ? 'Service Provider (Dashboard)' : 'Client (Public Signing Link)'}.
-                          </>
-                        ) : (
-                          <>
-                            Contract draft seeded and initialized in database.
-                          </>
-                        )}
+                        File <span className="font-mono text-purple-600 dark:text-purple-400">{meta.filename || 'agreement.pdf'}</span> downloaded by {meta.downloader === 'PROVIDER' ? 'Service Provider (Dashboard)' : 'Client (Public Signing Link)'}.
                       </p>
                       
                       <div className="text-[9px] text-slate-400 font-medium">
@@ -1124,54 +1387,113 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
         </DialogContent>
       </Dialog>
 
+      {/* Full-Screen PDF-Viewer style Preview Overlay */}
+      {isPreviewOpen && (
+        <div className="fixed inset-0 bg-[#09090b]/98 z-[9999] overflow-y-auto flex flex-col items-center">
+          {/* Top Sticky Toolbar */}
+          <div className="sticky top-0 w-full bg-[#18181b] border-b border-[#27272a] px-6 py-3 flex items-center justify-between text-white z-50">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-purple-400" />
+              <span className="font-bold text-sm font-sans truncate max-w-md">
+                Preview: {editMetadata.title}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link href={`/api/agreements/${agreement.id}/pdf`} target="_blank">
+                <Button size="sm" className="gap-1.5 text-xs bg-purple-700 hover:bg-purple-800 text-white font-semibold shadow">
+                  <Download className="h-4 w-4" /> Download PDF
+                </Button>
+              </Link>
+              <Button 
+                onClick={() => setIsPreviewOpen(false)}
+                variant="outline" 
+                size="sm" 
+                className="text-xs text-foreground font-semibold"
+              >
+                Close Preview
+              </Button>
+            </div>
+          </div>
+
+          {/* Centered Document Pages Wrapper */}
+          <div className="py-10 px-4 w-full flex justify-center max-w-4xl animate-in fade-in zoom-in-95 duration-200">
+            <AgreementPreview
+              agreement={agreement}
+              htmlContent={pages.join('<hr />')}
+              onSignClick={handleSignClick}
+              onDeleteSignature={async (role) => {
+                setLoading(true);
+                try {
+                  const res = await deleteAgreementSignatureAction(agreement.id, role);
+                  if (res.success && res.data) {
+                    setAgreement({
+                      ...agreement,
+                      ...res.data,
+                    });
+                    toastSuccess('Signature Reset', `${role === 'CLIENT' ? 'Client' : 'Provider'} signature deleted successfully.`);
+                  } else {
+                    toastError('Delete Failed', !res.success ? res.error.message : 'Failed to reset signature.');
+                  }
+                } catch (err: any) {
+                  toastError('Error', err.message || 'An unexpected error occurred.');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              showSignatureActions={true}
+            />
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         .editor-container .ProseMirror {
           outline: none;
-          font-size: 8.5px !important;
+          font-size: 10.66px !important;
           line-height: 1.25 !important;
           color: #334155 !important;
-          font-family: var(--font-inter), sans-serif;
+          font-family: Arial, Helvetica, sans-serif !important;
           min-height: 450px;
           background-color: #ffffff !important;
         }
         .editor-container .ProseMirror h1 {
-          font-size: 11px !important;
+          font-size: 14.66px !important;
           font-weight: bold;
-          margin-top: 6px !important;
-          margin-bottom: 3px !important;
+          margin-top: 8px !important;
+          margin-bottom: 4px !important;
           color: #581c87 !important;
           text-transform: uppercase;
         }
         .editor-container .ProseMirror h2 {
-          font-size: 9.5px !important;
+          font-size: 12.66px !important;
           font-weight: bold;
-          margin-top: 5px !important;
-          margin-bottom: 2.5px !important;
+          margin-top: 6px !important;
+          margin-bottom: 3px !important;
           color: #581c87 !important;
         }
         .editor-container .ProseMirror h3 {
-          font-size: 9.0px !important;
+          font-size: 12.00px !important;
           font-weight: bold;
-          margin-top: 4px !important;
+          margin-top: 5px !important;
           margin-bottom: 2px !important;
           color: #7e22ce !important;
         }
         .editor-container .ProseMirror p {
-          margin-bottom: 3px !important;
+          margin-bottom: 4px !important;
           color: #334155 !important;
         }
         .editor-container .ProseMirror ul {
           list-style-type: disc !important;
           padding-left: 16px !important;
-          margin-bottom: 3px !important;
+          margin-bottom: 4px !important;
         }
         .editor-container .ProseMirror ol {
           list-style-type: decimal !important;
           padding-left: 16px !important;
-          margin-bottom: 3px !important;
+          margin-bottom: 4px !important;
         }
         .editor-container .ProseMirror li {
-          margin-bottom: 1.5px !important;
+          margin-bottom: 2px !important;
           color: #334155 !important;
         }
         .editor-container .ProseMirror table {
@@ -1179,12 +1501,28 @@ export function AgreementDashboard({ initialAgreement, clients }: AgreementDashb
           border-collapse: collapse !important;
           border: 1px solid #cbd5e1 !important;
           margin-bottom: 10px !important;
+          table-layout: fixed !important;
+        }
+        .editor-container .ProseMirror td:first-child:nth-last-child(2),
+        .editor-container .ProseMirror td:first-child:nth-last-child(2) ~ td,
+        .editor-container .ProseMirror th:first-child:nth-last-child(2),
+        .editor-container .ProseMirror th:first-child:nth-last-child(2) ~ th {
+          width: 50% !important;
         }
         .editor-container .ProseMirror td {
           padding: 6px !important;
           border: 1px solid #cbd5e1 !important;
           vertical-align: top;
           color: #334155 !important;
+        }
+        .editor-container .ProseMirror th {
+          padding: 6px !important;
+          border: 1px solid #cbd5e1 !important;
+          border-bottom: 1px solid #cbd5e1 !important;
+          background-color: #faf5ff;
+          font-weight: bold;
+          text-align: left;
+          color: #581c87 !important;
         }
       `}</style>
     </div>

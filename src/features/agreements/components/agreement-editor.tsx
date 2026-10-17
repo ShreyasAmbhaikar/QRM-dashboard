@@ -6,6 +6,10 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TableCell } from '@tiptap/extension-table-cell';
 import { Button } from '@/components/ui/button';
 import {
   Bold,
@@ -22,6 +26,66 @@ import {
   Redo2
 } from 'lucide-react';
 
+const CustomTable = Table.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableRow = TableRow.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
 interface AgreementEditorProps {
   value: string;
   onChange: (html: string) => void;
@@ -36,6 +100,12 @@ export function AgreementEditor({ value, onChange }: AgreementEditorProps) {
       Underline,
       TextStyle,
       Color,
+      CustomTable.configure({
+        resizable: false,
+      }),
+      CustomTableRow,
+      CustomTableHeader,
+      CustomTableCell,
     ],
     content: value || '<p>Start typing the agreement terms...</p>',
     onUpdate: ({ editor }) => {
@@ -291,6 +361,34 @@ export function AgreementEditor({ value, onChange }: AgreementEditorProps) {
         .ProseMirror p {
           margin-bottom: 8px;
           line-height: 1.5;
+        }
+        .ProseMirror table {
+          width: 100%;
+          border-collapse: collapse !important;
+          border: 1px solid #cbd5e1 !important;
+          margin-bottom: 10px !important;
+          table-layout: fixed !important;
+        }
+        .ProseMirror td:first-child:nth-last-child(2),
+        .ProseMirror td:first-child:nth-last-child(2) ~ td,
+        .ProseMirror th:first-child:nth-last-child(2),
+        .ProseMirror th:first-child:nth-last-child(2) ~ th {
+          width: 50% !important;
+        }
+        .ProseMirror td {
+          padding: 6px !important;
+          border: 1px solid #cbd5e1 !important;
+          vertical-align: top;
+          color: #334155 !important;
+        }
+        .ProseMirror th {
+          padding: 6px !important;
+          border: 1px solid #cbd5e1 !important;
+          border-bottom: 1px solid #cbd5e1 !important;
+          background-color: #faf5ff;
+          font-weight: bold;
+          text-align: left;
+          color: #581c87 !important;
         }
       `}</style>
     </div>

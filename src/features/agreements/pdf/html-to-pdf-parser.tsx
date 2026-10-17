@@ -3,31 +3,31 @@ import { Text, View, StyleSheet } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
   paragraph: {
-    marginBottom: 3,
     fontSize: 8.0,
-    lineHeight: 1.2,
+    lineHeight: 1.25,
     color: '#334155',
     fontFamily: 'Helvetica',
+    marginBottom: 3,
   },
   heading1: {
     fontSize: 11.0,
     color: '#581c87',
     fontFamily: 'Helvetica-Bold',
-    marginTop: 6,
-    marginBottom: 3,
+    marginTop: 10,
+    marginBottom: 4,
   },
   heading2: {
     fontSize: 9.5,
     color: '#581c87',
     fontFamily: 'Helvetica-Bold',
-    marginTop: 5,
-    marginBottom: 2.5,
+    marginTop: 8,
+    marginBottom: 3,
   },
   heading3: {
     fontSize: 9.0,
     color: '#7e22ce',
     fontFamily: 'Helvetica-Bold',
-    marginTop: 4,
+    marginTop: 6,
     marginBottom: 2,
   },
   listItem: {
@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
   listContent: {
     flex: 1,
     fontSize: 8.0,
-    lineHeight: 1.2,
+    lineHeight: 1.25,
     color: '#334155',
   },
   boldText: {
@@ -69,15 +69,51 @@ interface StyleContext {
   fontSize?: number;
 }
 
-export function parseHtmlToPdf(html: string): React.ReactNode[] {
+const getReactPdfTextStyles = (context: StyleContext) => {
+  const textStyle: any = {};
+
+  if (context.color) {
+    textStyle.color = context.color;
+  }
+
+  if (context.fontSize) {
+    textStyle.fontSize = context.fontSize;
+  }
+
+  if (context.bold && context.italic) {
+    textStyle.fontFamily = 'Helvetica-BoldOblique';
+  } else if (context.bold) {
+    textStyle.fontFamily = 'Helvetica-Bold';
+  } else if (context.italic) {
+    textStyle.fontFamily = 'Helvetica-Oblique';
+  } else {
+    textStyle.fontFamily = 'Helvetica';
+  }
+
+  if (context.underline) {
+    textStyle.textDecoration = 'underline';
+  }
+
+  return textStyle;
+};
+
+function parseStandardHtmlToPdf(
+  html: string,
+  defaultContext?: { fontSize?: number; color?: string }
+): React.ReactNode[] {
   if (!html) return [];
 
-  // Clean raw spacing and split the HTML into tags and text chunks
   const cleanedHtml = html.replace(/\r?\n|\r/g, ' ');
   const tokens = cleanedHtml.split(/(<\/?[a-zA-Z1-6]+(?:\s+[^>]*?)?>)/);
 
   const elements: React.ReactNode[] = [];
-  const styleStack: StyleContext[] = [{ bold: false, italic: false, underline: false }];
+  const styleStack: StyleContext[] = [{ 
+    bold: false, 
+    italic: false, 
+    underline: false,
+    fontSize: defaultContext?.fontSize,
+    color: defaultContext?.color
+  }];
   
   let currentBlockType: 'p' | 'h1' | 'h2' | 'h3' | 'li' | null = null;
   let listType: 'ul' | 'ol' | null = null;
@@ -85,33 +121,13 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
   let currentBlockChildren: React.ReactNode[] = [];
 
   const getActiveStyle = (): StyleContext => {
-    return styleStack[styleStack.length - 1] || { bold: false, italic: false, underline: false };
-  };
-
-  const getReactPdfTextStyles = (context: StyleContext) => {
-    const textStyle: any = {
-      color: context.color || '#334155',
+    return styleStack[styleStack.length - 1] || { 
+      bold: false, 
+      italic: false, 
+      underline: false,
+      fontSize: defaultContext?.fontSize,
+      color: defaultContext?.color
     };
-
-    if (context.fontSize) {
-      textStyle.fontSize = context.fontSize;
-    }
-
-    if (context.bold && context.italic) {
-      textStyle.fontFamily = 'Helvetica-BoldOblique';
-    } else if (context.bold) {
-      textStyle.fontFamily = 'Helvetica-Bold';
-    } else if (context.italic) {
-      textStyle.fontFamily = 'Helvetica-Oblique';
-    } else {
-      textStyle.fontFamily = 'Helvetica';
-    }
-
-    if (context.underline) {
-      textStyle.textDecoration = 'underline';
-    }
-
-    return textStyle;
   };
 
   const closeCurrentBlock = (key: string | number) => {
@@ -123,7 +139,7 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
           <Text style={styles.listBullet}>
             {listType === 'ol' ? `${listIndex}.` : '•'}
           </Text>
-          <Text style={styles.listContent}>
+          <Text style={defaultContext?.fontSize ? { ...styles.listContent, fontSize: defaultContext.fontSize } : styles.listContent}>
             {currentBlockChildren}
           </Text>
         </View>
@@ -147,9 +163,15 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
         </Text>
       );
     } else {
-      // Default to paragraph style
+      const blockStyle = {
+        fontSize: defaultContext?.fontSize || 8.0,
+        lineHeight: 1.25,
+        color: defaultContext?.color || '#334155',
+        fontFamily: 'Helvetica',
+        marginBottom: 3,
+      };
       elements.push(
-        <Text key={key} style={styles.paragraph}>
+        <Text key={key} style={blockStyle}>
           {currentBlockChildren}
         </Text>
       );
@@ -163,7 +185,6 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
     if (!token) continue;
 
     if (token.startsWith('<') && token.endsWith('>')) {
-      // It is a tag
       const isClosing = token.startsWith('</');
       const tagContent = token.replace(/[<>]/g, '').trim();
       const splitContent = tagContent.split(/\s+/);
@@ -191,7 +212,6 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
           listIndex = 0;
         }
       } else {
-        // Opening tag
         if (tagName === 'p') {
           closeCurrentBlock(`block-${i}`);
           currentBlockType = 'p';
@@ -227,16 +247,14 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
           const current = getActiveStyle();
           const nextStyle = { ...current };
 
-          // Extract color attribute from style
           const colorMatch = tagContent.match(/color:\s*(#[0-9a-fA-F]{3,6}|[a-zA-Z()0-9, ]+)/i);
           if (colorMatch && colorMatch[1]) {
             nextStyle.color = colorMatch[1];
           }
 
-          // Extract font-size attribute from style
           const sizeMatch = tagContent.match(/font-size:\s*([0-9.]+)px/i);
           if (sizeMatch && sizeMatch[1]) {
-            nextStyle.fontSize = parseFloat(sizeMatch[1]) * 0.75; // standard scaling factor from px to pt
+            nextStyle.fontSize = parseFloat(sizeMatch[1]) * 0.75;
           }
 
           styleStack.push(nextStyle);
@@ -245,11 +263,9 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
         }
       }
     } else {
-      // It is plain text
       const styleContext = getActiveStyle();
       const textStyle = getReactPdfTextStyles(styleContext);
       
-      // Decode HTML entities
       const text = token
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
@@ -266,8 +282,106 @@ export function parseHtmlToPdf(html: string): React.ReactNode[] {
     }
   }
 
-  // Close any remaining block
   closeCurrentBlock('block-final');
+  return elements;
+}
+
+function parseTableToPdf(tableHtml: string, key: string): React.ReactNode {
+  const trMatches = tableHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+  
+  const tableBgColorMatch = tableHtml.match(/background-color:\s*(#[0-9a-fA-F]{3,6}|[a-zA-Z()0-9, ]+)/i);
+  const tableBgColor = (tableBgColorMatch && tableBgColorMatch[1]) ? tableBgColorMatch[1] : undefined;
+
+  const rows = trMatches.map((trHtml, rowIndex) => {
+    const isHeaderRow = trHtml.includes('background-color: #faf5ff') || trHtml.toLowerCase().includes('<th');
+    const cellMatches = trHtml.match(/<(th|td)[\s\S]*?<\/\1>/gi) || [];
+    
+    const cells = cellMatches.map((cellHtml, cellIndex) => {
+      const isTh = cellHtml.toLowerCase().startsWith('<th');
+      
+      const cellBgColorMatch = cellHtml.match(/background-color:\s*(#[0-9a-fA-F]{3,6}|[a-zA-Z()0-9, ]+)/i);
+      const cellBgColor = (cellBgColorMatch && cellBgColorMatch[1]) ? cellBgColorMatch[1] : (isHeaderRow ? '#faf5ff' : undefined) || tableBgColor;
+
+      const paddingMatch = cellHtml.match(/padding:\s*([0-9.]+)px/i);
+      const cellPadding = (paddingMatch && paddingMatch[1]) ? parseFloat(paddingMatch[1]) * 0.75 : (isTh ? 6 : 7.5);
+
+      const sizeMatch = cellHtml.match(/font-size:\s*([0-9.]+)px/i);
+      const cellFontSize = (sizeMatch && sizeMatch[1]) ? parseFloat(sizeMatch[1]) * 0.75 : (isTh ? 7.1 : 6.75);
+
+      const colorMatch = cellHtml.match(/color:\s*(#[0-9a-fA-F]{3,6}|[a-zA-Z()0-9, ]+)/i);
+      const cellColor = (colorMatch && colorMatch[1]) ? colorMatch[1] : (isTh ? '#581c87' : '#334155');
+
+      const innerHtml = cellHtml.replace(/^<(th|td)[^>]*>/i, '').replace(/<\/(th|td)>$/i, '');
+      const hasRightBorder = cellIndex < cellMatches.length - 1;
+      
+      const content = parseStandardHtmlToPdf(innerHtml, { fontSize: cellFontSize, color: cellColor });
+      
+      return (
+        <View 
+          key={`cell-${rowIndex}-${cellIndex}`} 
+          style={{
+            flex: 1,
+            padding: cellPadding,
+            backgroundColor: cellBgColor,
+            borderRightWidth: hasRightBorder ? 1 : 0,
+            borderRightColor: '#cbd5e1',
+            flexDirection: 'column',
+          }}
+        >
+          {content}
+        </View>
+      );
+    });
+
+    const isLastRow = rowIndex === trMatches.length - 1;
+    
+    return (
+      <View 
+        key={`row-${rowIndex}`} 
+        style={{
+          flexDirection: 'row',
+          borderBottomWidth: isLastRow ? 0 : 1,
+          borderBottomColor: '#cbd5e1',
+        }}
+      >
+        {cells}
+      </View>
+    );
+  });
+
+  return (
+    <View 
+      key={key} 
+      style={{
+        width: '100%',
+        borderWidth: 1,
+        borderColor: '#cbd5e1',
+        marginTop: 8,
+        marginBottom: 14,
+        flexDirection: 'column',
+        borderRadius: 4,
+      }}
+    >
+      {rows}
+    </View>
+  );
+}
+
+export function parseHtmlToPdf(html: string): React.ReactNode[] {
+  if (!html) return [];
+
+  const parts = html.split(/(<table[\s\S]*?<\/table>)/i);
+  const elements: React.ReactNode[] = [];
+
+  parts.forEach((part, index) => {
+    if (!part) return;
+
+    if (part.toLowerCase().startsWith('<table')) {
+      elements.push(parseTableToPdf(part, `table-${index}`));
+    } else {
+      elements.push(...parseStandardHtmlToPdf(part));
+    }
+  });
 
   return elements;
 }

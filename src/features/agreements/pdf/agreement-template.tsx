@@ -27,18 +27,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  logoImage: {
+    height: 36,
+  },
   logoTextContainer: {
-    marginLeft: 8,
+    marginLeft: 10,
   },
   logoTextTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: 'Helvetica-Bold',
     color: '#581c87',
   },
   logoTextSub: {
     fontSize: 8,
     letterSpacing: 2,
-    color: '#64748b',
+    color: '#7c3aed',
     fontFamily: 'Helvetica-Bold',
     textTransform: 'uppercase',
   },
@@ -150,6 +153,19 @@ const styles = StyleSheet.create({
   },
 });
 
+const GLOBE_PATH = "M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z M12 2v20 M2 12a10 10 0 1 0 20 0 10 10 0 1 0-20 0";
+const PHONE_PATH = "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z";
+const MAIL_PATH = "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6";
+
+const PdfContactItem = ({ text, path }: { text: string; path: string }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 2.5 }}>
+    <Text style={{ fontSize: 8.5, color: '#475569', marginRight: 5, fontFamily: 'Helvetica' }}>{text}</Text>
+    <Svg width="12" height="12" viewBox="0 0 24 24" style={{ backgroundColor: '#581c87', borderRadius: 2.5, padding: 1.8 }}>
+      <Path d={path} fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  </View>
+);
+
 export interface AgreementPdfProps {
   title: string;
   clientName: string;
@@ -219,12 +235,7 @@ export function AgreementPdfDocument({
             <View style={styles.headerContainer} fixed>
               {/* Logo Area */}
               <View style={styles.logoSection}>
-                <Svg width="36" height="36" viewBox="0 0 200 200">
-                  <Circle cx="100" cy="100" r="75" stroke="#581c87" strokeWidth="18" fill="none" />
-                  <Path d="M100 25 A75 75 0 0 1 175 100 L140 100 A40 40 0 0 0 100 60 Z" fill="#581c87" />
-                  <Circle cx="100" cy="100" r="32" fill="#7c3aed" />
-                  <Path d="M125 125 L175 175" stroke="#581c87" strokeWidth="22" strokeLinecap="round" />
-                </Svg>
+                <Image src="public/qrm-logo.png" style={styles.logoImage} />
                 <View style={styles.logoTextContainer}>
                   <Text style={styles.logoTextTitle}>Quantum Reach</Text>
                   <Text style={styles.logoTextSub}>Media</Text>
@@ -233,9 +244,9 @@ export function AgreementPdfDocument({
 
               {/* Company Info */}
               <View style={styles.headerContact}>
-                <Text style={styles.contactItem}>{companyWebsite || 'quantumreachmedia.com'}</Text>
-                <Text style={styles.contactItem}>{companyPhone || '+91 77388 12028'}</Text>
-                <Text style={styles.contactItem}>{companyEmail || 'tushar7738812028@gmail.com'}</Text>
+                <PdfContactItem text={companyWebsite || 'quantumreachmedia.com'} path={GLOBE_PATH} />
+                <PdfContactItem text={companyPhone || '+91 77388 12028'} path={PHONE_PATH} />
+                <PdfContactItem text={companyEmail || 'tushar7738812028@gmail.com'} path={MAIL_PATH} />
               </View>
             </View>
 
