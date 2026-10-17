@@ -66,7 +66,7 @@
     "pino": "^10.3.1",
     "playwright-core": "^1.62.0",
     "prisma": "^6.19.3",
-    "react": "19.2.4",
+    "react": "19.2.8",
     "react-dom": "19.2.4",
     "react-email": "^6.9.1",
     "react-hook-form": "^7.83.0",
